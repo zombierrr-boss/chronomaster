@@ -20,11 +20,21 @@ A new playable character with his own tile in character select, his own save, a 
 - **Rewind** — makes the return stronger (healing, explosions, ally support).
 - **Detour** — rewards going far from the bomb before you return.
 
+## Requirements
+
+- **Borderlands 2** on PC.
+- **Python SDK / Willow2 Mod Manager 3.x** from Nexus Mods. Once installed, the main menu shows a *Mods* entry.
+- **Mechromancer Pack (Gaige) DLC**, as far as we know — the 7th character slot is built from its data. Included in the Game of the Year Edition.
+
 ## Installation
 
-1. Install the **Python SDK / Willow2 Mod Manager 3.x** from Nexus Mods.
-2. Copy the `chronomaster` folder into `…\Borderlands 2\sdk_mods\`.
-3. Enable **Chronomaster** in the *Mods* menu and **restart the game once**.
+1. Download **`Chronomaster-v1.40.zip`** from the [GitHub Releases](https://github.com/zombierrr-boss/chronomaster/releases) page (or from Nexus Mods) and unzip it. You get a folder named `chronomaster`.
+   *Downloaded the whole project instead (Code → Download ZIP)? Then the `chronomaster` folder is inside its `sdk` folder — ignore the long outer folder name.*
+2. Copy **the `chronomaster` folder** into `…\Borderlands 2\sdk_mods\`. It must end up like this:
+   ```
+   …\Borderlands 2\sdk_mods\chronomaster\__init__.py
+   ```
+3. Start the game, enable **Chronomaster** in the *Mods* menu and **restart the game once**.
 4. Create a new character on the 7th tile.
 
 To uninstall, disable the mod and restart. Don't load a Chronomaster save while the mod is disabled.

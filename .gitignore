@@ -30,3 +30,6 @@ __pycache__/
 .vscode/
 Thumbs.db
 desktop.ini
+
+# Release-Pakete (werden gebaut, nicht eingecheckt)
+dist/
