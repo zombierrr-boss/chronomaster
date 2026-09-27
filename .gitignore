@@ -1,0 +1,32 @@
+# Spielstände und Backups gehören nicht ins Repo
+SaveData/
+*.sav
+*-Backup-*/
+
+# Konsolen- und Spiel-Logs
+*.log
+Launch.log
+
+# Extrahierte Spielassets — urheberrechtlich geschützt, nie einchecken
+assets/
+extracted/
+*.upk
+*.pak
+*.uasset
+
+# Fremde Mods zum Nachschlagen (nicht unser Code, nicht einchecken)
+Nisha*/
+
+# OpenBLCMM
+*.blcm.bak
+backups/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
