@@ -20,6 +20,8 @@ A new playable character with his own tile in character select, his own save, a 
 - **Rewind** — makes the return stronger (healing, explosions, ally support).
 - **Detour** — rewards going far from the bomb before you return.
 
+**All 36 skills with their numbers: [SKILLS.md](SKILLS.md)**, readable without installing anything.
+
 ## Requirements
 
 - **Borderlands 2** on PC.
