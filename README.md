@@ -28,7 +28,7 @@ A new playable character with his own tile in character select, his own save, a 
 
 ## Installation
 
-1. Download **`Chronomaster-v1.40.zip`** from the [GitHub Releases](https://github.com/zombierrr-boss/chronomaster/releases) page (or from Nexus Mods) and unzip it. You get a folder named `chronomaster`.
+1. Download **`Chronomaster-v1.40.zip`** from the [GitHub Releases](https://github.com/zombierrr-boss/chronomaster/releases) page and unzip it. You get a folder named `chronomaster`.
    *Downloaded the whole project instead (Code → Download ZIP)? Then the `chronomaster` folder is inside its `sdk` folder — ignore the long outer folder name.*
 2. Copy **the `chronomaster` folder** into `…\Borderlands 2\sdk_mods\`. It must end up like this:
    ```
@@ -47,7 +47,7 @@ To uninstall, disable the mod and restart. Don't load a Chronomaster save while 
 
 ## Feedback
 
-Post on the **Nexus Mods** page (*Posts* for balance/ideas, *Bugs* for bugs). For crashes, please attach `…\Borderlands 2\Binaries\Win32\Plugins\unrealsdk.log` — copy it before restarting the game.
+Balance, ideas, bugs — everything is welcome: open an issue on [GitHub](https://github.com/zombierrr-boss/chronomaster/issues) or comment in the Reddit thread. (Not on Nexus Mods yet — that comes after this test phase.) For crashes, please attach `…\Borderlands 2\Binaries\Win32\Plugins\unrealsdk.log` — copy it before restarting the game.
 
 ## Credits & License
 
