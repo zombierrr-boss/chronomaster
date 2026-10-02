@@ -30,20 +30,22 @@ A new playable character with his own tile in character select, his own save, a 
 
 ## Installation
 
-1. Download **`Chronomaster-v1.40.zip`** from the [GitHub Releases](https://github.com/zombierrr-boss/chronomaster/releases) page and unzip it. You get a folder named `chronomaster`.
-   *Downloaded the whole project instead (Code → Download ZIP)? Then the `chronomaster` folder is inside its `sdk` folder — ignore the long outer folder name.*
+1. Download **`Chronomaster-v1.54.zip`** from the [GitHub Releases](https://github.com/zombierrr-boss/chronomaster/releases) page and unzip it. You get two folders: `chronomaster` and `CookedPCConsole`.
+   *Downloaded the whole project instead (Code → Download ZIP)? Then the `chronomaster` folder is inside its `sdk` folder — ignore the long outer folder name. That download has no model files; get them from the release.*
 2. Copy **the `chronomaster` folder** into `…\Borderlands 2\sdk_mods\`. It must end up like this:
    ```
    …\Borderlands 2\sdk_mods\chronomaster\__init__.py
    ```
-3. Start the game, enable **Chronomaster** in the *Mods* menu and **restart the game once**.
-4. Create a new character on the 7th tile.
+3. **Model and portrait (optional):** with the game closed, copy the four `Chronomaster*.upk` files from the `CookedPCConsole` folder into `…\Borderlands 2\WillowGame\CookedPCConsole\`. Without them, the Chronomaster looks like Zer0.
+4. Start the game, enable **Chronomaster** in the *Mods* menu and **restart the game once**.
+5. Create a new character on the 7th tile.
 
-To uninstall, disable the mod and restart. Don't load a Chronomaster save while the mod is disabled.
+To uninstall, disable the mod and restart, then delete the four `Chronomaster*.upk` files from `CookedPCConsole`. Don't load a Chronomaster save while the mod is disabled.
 
 ## Known limitations
 
-- Looks like Zer0 for now (model, skins, portrait).
+- The model is a placeholder.
+- In co-op, other players only see the model if they installed the model files too.
 - Co-op, a full playthrough from level 1 and other character mods are untested.
 - Grenade skills scale with your grenade's card damage — grenades without a damage number make them weak.
 
@@ -53,7 +55,8 @@ Balance, ideas, bugs — everything is welcome: open an issue on [GitHub](https:
 
 ## Credits & License
 
-Made by **zombierrr**. Thanks to **LJBreeze** — the Nisha mod (Nexus #654) showed that a 7th character slot is possible.
+Made by **zombierrr**. Thanks to **LJBreeze** — the Nisha mod (Nexus #654) showed that a 7th character slot is possible. The model packages were built with **[bl2-part-pipeline](https://github.com/corporateweapon/bl2-part-pipeline)** by **44M0N**.
 
-MIT License — use, change and reupload freely, as long as you credit zombierrr. See [LICENSE](LICENSE).
-*Borderlands 2 is a trademark of Gearbox Software / 2K. This is an unofficial fan mod.*
+MIT License for the code — use, change and reupload freely, as long as you credit zombierrr. See [LICENSE](LICENSE).
+The model files (`Chronomaster*.upk`) are **not** covered by the MIT License: they are built on Zer0's model and skeleton from Borderlands 2.
+*Borderlands 2 and Zer0 are property of Gearbox Software / 2K. This is an unofficial fan mod.*

@@ -76,7 +76,13 @@ if name_id not in movie.SelectableCharacters:
     obj.AddSelectableCharacter("/ package/UI_CharacterPortraits/Assassin")   # Portrait der Vorlage
 ```
 
-Der Portrait-Pfad ist eine Scaleform-URL auf ein `SwfMovie`-Objekt (`StatusMenuGFxPortrait` der Vorlage: `UI_CharacterPortraits.Assassin` → `/ package/UI_CharacterPortraits/Assassin`, mit Leerzeichen nach dem Schrägstrich). Ein eigenes Portrait braucht ein eigenes SWF in einem `.upk` (Teil B).
+Der Portrait-Pfad ist eine Scaleform-URL auf ein `SwfMovie`-Objekt (`StatusMenuGFxPortrait` der Vorlage: `UI_CharacterPortraits.Assassin` → `/ package/UI_CharacterPortraits/Assassin`, mit Leerzeichen nach dem Schrägstrich).
+
+**Eigenes Portrait (bewiesen 2026-09-28, v1.48), ohne eigenes SWF:**
+- Eine `Texture2D` in einem eigenen `.upk` (`tools/portrait_bauen.py`) als **`img://Paket.Textur`** übergeben.
+- **Achtung:** Seit der DLC-Registrierung (Schritt 3) legt das Spiel die Kachel selbst an. Es ruft `AddSelectableCharacter(IconMoviePath)` je Eintrag in `SelectableCharacters` auf, und zwar **vor** dem PRE-Hook auf `CommitSelectableCharacters`. Der obige Aufruf läuft dann nicht mehr („bereits in der Liste“).
+- **Das Portrait tauscht ein PRE-Hook auf `AddSelectableCharacter`:** Er erkennt den Eintrag an seiner Position in `SelectableCharacters`, blockt und ruft mit der eigenen URL neu auf (`_on_add_selectable` im Modul).
+- **Größe:** Texel werden 1:1 gezeigt, 61×61 bei (1, 2) mit abgeschrägter Ecke.
 
 ### 5. Mehrere Charaktere
 
@@ -94,7 +100,7 @@ Die Kopie spielt sich sonst exakt wie die Vorlage. Der eigene Baum entsteht als 
 
 Alle Array-Zugriffe (`Tiers`, `Children`, `SkillEffectDefinitions`) sind per SDK elementweise schreibbar; die Hotfix-Regel „immer das ganze Array setzen" gilt hier nicht. Danach die Skills in den Tiers durch eigene Kopien ersetzen (Rezept: `docs/skills.md`, 6.2).
 
-Eigener Action Skill: Hooks auf die vier Skill-Funktionen (`TRACE_FUNCS` im Modul). Eigenes Modell/Portrait/Stimme: `.upk`-Pakete wie bei Nisha (`unrealsdk.load_package(<Dateipfad>)`), Teil B.
+Eigener Action Skill: Hooks auf die vier Skill-Funktionen (`TRACE_FUNCS` im Modul). Eigenes Modell/Portrait/Stimme: `.upk`-Pakete wie bei Nisha (`unrealsdk.load_package(<Dateipfad>)`), Teil B. Modell und Portrait sind für den Chronomaster gelöst: `docs/modell-pipeline.md`.
 
 ## Fallen (alle selbst erlebt)
 

@@ -124,6 +124,7 @@ Regeln (aus Abstuerzen und Fehlversuchen, Details docs/spikes.md):
 """
 
 import math
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -132,7 +133,7 @@ from mods_base import ENGINE, Game, build_mod, command
 from unrealsdk import logging
 from unrealsdk.unreal import UObject, WeakPointer
 
-__version__ = "1.40"
+__version__ = "1.54"
 __author__ = "zombierrr"
 
 # Der Charaktername ist ein Platzhalter (plan.md, Anhang A). Seit D4 ist DIESE Konstante die einzige
@@ -1704,6 +1705,34 @@ NAMEID_NEW = "GD_PlayerNameId.Chronomaster"
 # Scaleform laedt Portraits per "/ package/"-URL aus SwfMovie-Paketen; Zer0s Portrait ist
 # SwfMovie'UI_CharacterPortraits.Assassin' (StatusMenuGFxPortrait im Dump).
 PORTRAIT_PATH = "/ package/UI_CharacterPortraits/Assassin"
+# v1.46: eigenes Portrait als Texture2D (Paket ChronomasterPortrait, gebaut mit bl2_upk.texture).
+# VERMUTUNG, ungetestet: Scaleform in UE3 laedt per "img://Paket.Textur" eine Textur als Bild.
+PORTRAIT_PAKET = "ChronomasterPortrait"
+PORTRAIT_TEXTUR = "ChronomasterPortrait.Chronomaster_Portrait"
+
+
+def portrait_url() -> str:
+    """img://-URL auf das eigene Portrait, sonst Zer0s SwfMovie (Paket fehlt oder laedt nicht)."""
+    import os  # noqa: PLC0415
+    cooked = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                          "WillowGame", "CookedPCConsole")
+    if not os.path.isfile(os.path.join(cooked, PORTRAIT_PAKET + ".upk")):
+        return PORTRAIT_PATH
+    try:
+        tex = _find("Texture2D", PORTRAIT_TEXTUR)
+        if tex is None:
+            paket = unrealsdk.load_package(PORTRAIT_PAKET)
+            if paket is not None:
+                _root(paket)
+            tex = _find("Texture2D", PORTRAIT_TEXTUR)
+        if tex is None:
+            logging.error(f"[ZB] Portrait: {PORTRAIT_TEXTUR} nicht gefunden - Zer0s Portrait")
+            return PORTRAIT_PATH
+        _root(tex)
+        return f"img://{PORTRAIT_TEXTUR}"
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Portrait: {ex} - Zer0s Portrait")
+        return PORTRAIT_PATH
 
 
 def _find(cls: str, path: str) -> UObject | None:
@@ -5799,6 +5828,47 @@ def ensure_seventh_character() -> None:
         logging.info(f"[ZB] SPIKE C: Objektkette unvollstaendig ({ex}) - wird im Auswahlmenue nachgeholt")
 
 
+_kachel_zaehler = 0
+_kachel_index = -1
+_kachel_selbst = False
+ADD_SELECTABLE_FUNC = "WillowGame.CharacterSelectionGFxObject:AddSelectableCharacter"
+
+
+def _on_add_selectable(obj: UObject, args: Any, ret: Any, func: Any) -> Any:
+    """PRE: jede Kachel-Anlage des Spiels. Die Kachel des Chronomasters bekommt das eigene Portrait."""
+    global _kachel_zaehler, _kachel_selbst
+    if _kachel_selbst:
+        return None
+    # v1.47b: die Aufrufe kommen VOR dem Commit-Hook (Log) - Position deshalb hier aus der Liste
+    # bestimmen. Aufruf i legt die Kachel fuer SelectableCharacters[i] an (Reihenfolge im Log gleich).
+    try:
+        chars = [c._path_name() if c else "" for c in obj.Outer.SelectableCharacters]
+    except Exception:  # noqa: BLE001
+        chars = []
+    if chars and _kachel_zaehler >= len(chars):
+        _kachel_zaehler = 0
+    i = _kachel_zaehler
+    _kachel_zaehler += 1
+    try:
+        alt = str(args.IconMoviePath)
+    except Exception:  # noqa: BLE001
+        alt = "?"
+    if not (i < len(chars) and chars[i] == NAMEID_NEW):
+        logging.info(f"[ZB] Kachel {i}: {alt}")
+        return None
+    url = portrait_url()
+    logging.info(f"[ZB] Kachel {i} (Chronomaster): {alt} -> {url}")
+    if url == PORTRAIT_PATH:
+        return None
+    _kachel_selbst = True
+    try:
+        obj.AddSelectableCharacter(url)
+    finally:
+        _kachel_selbst = False
+    from unrealsdk.hooks import Block  # noqa: PLC0415
+    return Block
+
+
 def _on_commit_characters(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     """PRE-Hook: obj ist das CharacterSelectionGFxObject (CharacterSelectClip), obj.Outer das Menue."""
     try:
@@ -5817,11 +5887,17 @@ def _on_commit_characters(obj: UObject, args: Any, ret: Any, func: Any) -> None:
         if mine is None:
             return
         if any(n == NAMEID_NEW for n in names):
-            logging.info("[ZB] SPIKE C: Chronomaster ist bereits in der Liste")
+            # v1.46b: seit der DLC-Registrierung legt das Spiel die Kachel selbst an (ruft
+            # AddSelectableCharacter je Eintrag) - das Portrait tauscht _on_add_selectable
+            global _kachel_zaehler, _kachel_index
+            _kachel_zaehler = 0
+            _kachel_index = names.index(NAMEID_NEW)
+            logging.info(f"[ZB] SPIKE C: Chronomaster ist bereits in der Liste (Index {_kachel_index})")
             return
         chars.append(mine)
-        obj.AddSelectableCharacter(PORTRAIT_PATH)
-        logging.info(f"[ZB] SPIKE C: Chronomaster angehaengt + Kachel ({PORTRAIT_PATH}) -> jetzt {len(movie.SelectableCharacters)} Eintraege")
+        url = portrait_url()
+        obj.AddSelectableCharacter(url)
+        logging.info(f"[ZB] SPIKE C: Chronomaster angehaengt + Kachel ({url}) -> jetzt {len(movie.SelectableCharacters)} Eintraege")
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] SPIKE C: {ex}")
 
@@ -6003,6 +6079,7 @@ def register_tracers() -> None:
     from unrealsdk.hooks import Type, add_hook  # noqa: PLC0415
     add_hook(COMMIT_FUNC, Type.PRE, "zb_spike_c", _on_commit_characters)
     add_hook(LIST_FUNC, Type.POST, "zb_baumkette", _on_build_character_list)
+    add_hook(ADD_SELECTABLE_FUNC, Type.PRE, "zb_kachel", _on_add_selectable)  # eigenes Portrait, v1.46b
     # Phase 3: die Skilltaste wird zu Legen und Zuenden. Greift nur beim Chronomaster (ist_chronomaster).
     add_hook(SKILL_STARTED, Type.POST, "zb_legen", _on_skill_started)
     add_hook(SKILL_PRESSED, Type.PRE, "zb_zuenden", _on_start_pressed)
@@ -6010,6 +6087,7 @@ def register_tracers() -> None:
     add_hook(ACTIVATE_SKILL_FUNC, Type.PRE, "zb_stealth", _on_activate_skill)
     add_hook(POST_AK_EVENT_FUNC, Type.PRE, "zb_klang", _on_post_ak_event)
     add_hook(TICK_FUNC, Type.POST, "zb_ticker", _on_player_tick)  # Handgriff 2, v0.59
+    add_hook(SKIN_TICK_FUNC, Type.PRE, "zb_aussehen", _on_viewport_tick)  # eigenes Modell, v1.41
     add_hook(INPUT_KEY_FUNC, Type.PRE, "zb_taste", _on_input_key)  # Schattenanker, v0.95
     add_hook(KILLED_ENEMY_FUNC, Type.POST, "zb_kill", _on_notify_killed_enemy)  # Handgriff 3, v0.66
     add_hook(UPDATE_KILL_SKILLS_FUNC, Type.PRE, "zb_killskills", _on_update_kill_skills)  # v1.16
@@ -6030,12 +6108,14 @@ def unregister_tracers() -> None:
     from unrealsdk.hooks import Type, remove_hook  # noqa: PLC0415
     remove_hook(COMMIT_FUNC, Type.PRE, "zb_spike_c")
     remove_hook(LIST_FUNC, Type.POST, "zb_baumkette")
+    remove_hook(ADD_SELECTABLE_FUNC, Type.PRE, "zb_kachel")
     remove_hook(SKILL_STARTED, Type.POST, "zb_legen")
     remove_hook(SKILL_PRESSED, Type.PRE, "zb_zuenden")
     remove_hook(SKILL_ENDED, Type.POST, "zb_verpuffen")
     remove_hook(ACTIVATE_SKILL_FUNC, Type.PRE, "zb_stealth")
     remove_hook(POST_AK_EVENT_FUNC, Type.PRE, "zb_klang")
     remove_hook(TICK_FUNC, Type.POST, "zb_ticker")
+    remove_hook(SKIN_TICK_FUNC, Type.PRE, "zb_aussehen")
     remove_hook(INPUT_KEY_FUNC, Type.PRE, "zb_taste")
     remove_hook(KILLED_ENEMY_FUNC, Type.POST, "zb_kill")
     remove_hook(UPDATE_KILL_SKILLS_FUNC, Type.PRE, "zb_killskills")
@@ -6420,6 +6500,453 @@ def cash(amount: int) -> None:
         logging.error(f"[ZB] TESTHILFE cash: {ex}")
 
 
+# --- Aussehen: eigenes Modell NUR am Chronomaster (v1.41, Phase 9) -----------------------------------
+# Die Pipeline (bl2_charswap) baut Meshes auf Zer0s Skelett; ihr Test-Host PipelineCharacters tauscht
+# aber nach Mesh - Zer0 trug das Modell mit (2026-09-28). Hier dieselbe Technik (runtime.py der
+# Pipeline, MIT: SetSkeletalMesh + eigenes MaterialInstanceConstant, Kopf ausblenden), aber je
+# Komponente wird gefragt, WEM sie gehoert:
+#   - dem eigenen Pawn, einer Vorschau (Statusmenue) oder dem Menue-Charakter (kein Pawn) ->
+#     ist der lokale Spieler Chronomaster?
+#   - einem fremden Pawn (Koop) -> dessen Controller.PlayerClass; unbekannt = nicht tauschen.
+# Wechselt die Antwort (Hauptmenue: anderer Charakter gewaehlt), wird zurueckgetauscht.
+# Fehlen die Pakete in CookedPCConsole (normale Spieler), passiert nichts.
+# v1.42: Timekeeper-Modell (TRELLIS aus dem Konzeptbild, tools/modell_riggen.py, Spec skins/timekeeper/)
+SKIN_PAKETE = ["ChronomasterTextures", "ChronomasterMeshes", "ChronomasterMeshesArms"]
+SKIN_TAUSCH = {  # Quell-Mesh -> (neues Mesh, Name des Materials)
+    "Char_Assassin.Mesh.Skel_AssassinBody": ("ChronomasterMeshes.Chronomaster_Body", "Mati_Chrono_Body"),
+    "Char_Assassin.Mesh.Hands_Assassin": ("ChronomasterMeshesArms.Chronomaster_Arms", "Mati_Chrono_Arms"),
+}
+SKIN_TEXTUREN = {"p_Diffuse": "ChronomasterTextures.Chronomaster_Body_Albedo",
+                 "p_Normal": "ChronomasterTextures.Chronomaster_Body_Normal"}
+# Elternmaterial je Quell-Mesh plus zusaetzliche Texturen. v1.42 lief auf dem Class-Mod-Material (Platzhalter
+# der Pipeline): gelb-golden, glaenzend. v1.43: Zer0s eigene Spieler-MICs (Parent Common_Materials.Player.
+# Master_Player, Dump) - erben dessen kompilierte Shader. p_Masks legt fest, wo die Anpassungsfarben
+# einfaerben; schwarz = nirgends, unsere Textur bleibt wie sie ist.
+SKIN_MATERIALIEN = {
+    "zer0": ({"Char_Assassin.Mesh.Skel_AssassinBody": "Char_Assassin.Materials.Mati_Assassin_Body",
+              "Char_Assassin.Mesh.Hands_Assassin": "Char_Assassin.Materials.Mati_Assassin_Hands"},
+             {"p_Masks": "EngineResources.Black"}),
+    "klassenmod": ({"*": "Item_ClassMods.Mat.Master_ClassMod"}, {}),
+    # v1.49: Zer0s eigene Texturen (aus seinem MIC kopiert) - fuer Modelle auf Zer0s UV-Layout
+    # (Nullprobe, Zer0-Umbau aus docs/modell-pipeline.md 2b)
+    "original": ({"Char_Assassin.Mesh.Skel_AssassinBody": "Char_Assassin.Materials.Mati_Assassin_Body",
+                  "Char_Assassin.Mesh.Hands_Assassin": "Char_Assassin.Materials.Mati_Assassin_Hands"},
+                 None),
+}
+_skin_mat_art = "zer0"
+SKIN_MAT_OUTER = "Common_GunMaterials.Materials.Pistol"
+SKIN_KOPF_PRAEFIX = "CD_Heads_Assassin"
+SKIN_TICKS = 30          # v1.45: alle 30 Frames (vorher 10 wie die Pipeline; Ruckler gemessen v1.44)
+SKIN_TICK_FUNC = "WillowGame.WillowGameViewportClient:Tick"  # laeuft auch im Menue/Pause (Pipeline, bewiesen)
+
+_skin: dict[str, tuple[UObject, UObject]] = {}   # Quell-Mesh-Pfad -> (Mesh, MIC); leer = kein Skin
+_skin_versucht = False
+_skin_an = True          # zb skin aus|an
+_skin_zaehler = 0
+# Komponentenpfad -> (Quell-Mesh-Objekt, Materialliste, Besitzerpfad). Nur Pfade als Schluessel -
+# Komponenten werden bei jedem Scan frisch per find_all geholt (keine Menue-Objekte cachen).
+_skin_getauscht: dict[str, tuple[str, list, str]] = {}   # v1.53: (Mesh-Pfad, [(Klasse, Pfad)|None], Besitzer)
+_skin_versteckt: dict[str, str] = {}   # Komponentenpfad -> Besitzerpfad
+_skin_letzte_klasse: str | None = "?"
+
+
+def _pfad(obj: UObject | None) -> str:
+    try:
+        return obj._path_name() if obj is not None else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _skin_laden() -> None:
+    """Einmal: Pakete laden (nur wenn die Dateien da sind), Meshes finden, Materialien bauen, rooten."""
+    global _skin_versucht
+    if _skin_versucht:
+        return
+    _skin_versucht = True
+    import os  # noqa: PLC0415
+    cooked = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                          "WillowGame", "CookedPCConsole")
+    fehlt = [p for p in SKIN_PAKETE if not os.path.isfile(os.path.join(cooked, p + ".upk"))]
+    if fehlt:
+        logging.info(f"[ZB] Aussehen: kein eigenes Modell installiert (fehlt: {', '.join(fehlt)})")
+        return
+    try:
+        for p in SKIN_PAKETE:
+            paket = unrealsdk.load_package(p)
+            if paket is not None:
+                _root(paket)
+        for quelle, (mesh_pfad, mat_name) in SKIN_TAUSCH.items():
+            mesh = unrealsdk.find_object("SkeletalMesh", mesh_pfad)
+            _root(mesh)
+            for sock in mesh.Sockets:
+                _root(sock)
+            mic = _find("MaterialInstanceConstant", f"{SKIN_MAT_OUTER}.{mat_name}")
+            if mic is None:
+                outer = _find("Package", SKIN_MAT_OUTER) or _find("Package", "Char_Assassin.Materials")
+                mic =unrealsdk.construct_object("MaterialInstanceConstant", outer, mat_name, 0, None)
+            _root(mic)
+            _skin[quelle] = (mesh, mic)
+        skin_material(_skin_mat_art)
+        logging.info(f"[ZB] Aussehen: Modell geladen ({len(_skin)} Meshes) - nur am {CHARACTER_NAME}")
+    except Exception as ex:  # noqa: BLE001
+        _skin.clear()
+        logging.error(f"[ZB] Aussehen: Laden gescheitert: {ex}")
+
+
+def skin_material(art: str) -> None:
+    """Elternmaterial und Texturen unserer MICs setzen (zb skin mat zer0|klassenmod, v1.43)."""
+    global _skin_mat_art
+    if art not in SKIN_MATERIALIEN:
+        logging.info(f"[ZB] Aussehen: Material {art}? Moeglich: {', '.join(SKIN_MATERIALIEN)}")
+        return
+    _skin_mat_art = art
+    je_mesh, extra = SKIN_MATERIALIEN[art]
+    for quelle, (_mesh, mic) in _skin.items():
+        eltern_pfad = je_mesh.get(quelle) or next(iter(je_mesh.values()))
+        eltern = _find("MaterialInstanceConstant", eltern_pfad) or _find("Material", eltern_pfad)
+        if eltern is None:
+            logging.error(f"[ZB] Aussehen: Elternmaterial {eltern_pfad} nicht gefunden")
+            continue
+        mic.SetParent(eltern)
+        if extra is None:
+            # "original": Zer0s Texturparameter uebernehmen (nur Properties lesen) - ueberschreibt,
+            # was eine andere Art vorher an unserem MIC gesetzt hatte
+            for tp in eltern.TextureParameterValues:
+                if tp.ParameterValue is not None:
+                    _root(tp.ParameterValue)
+                    mic.SetTextureParameterValue(tp.ParameterName, tp.ParameterValue)
+                    logging.info(f"[ZB] Aussehen:   {tp.ParameterName} = {_pfad(tp.ParameterValue)}")
+        for k, t in (dict(SKIN_TEXTUREN, **extra) if extra is not None else {}).items():
+            # v1.50: eigene Arm-Texturen (Zer0-Umbau: die Arme haben Zer0s Hand-UVs), sonst die des Koerpers
+            eigene = t.replace("Chronomaster_Body_", "Chronomaster_Arms_") if "Hands_Assassin" in quelle else t
+            tex = _find("Texture2D", eigene) or _find("Texture2D", t)
+            if tex is None:
+                logging.error(f"[ZB] Aussehen: Textur {t} nicht gefunden")
+                continue
+            _root(tex)
+            mic.SetTextureParameterValue(k, tex)
+            logging.info(f"[ZB] Aussehen:   {quelle.rsplit('.', 1)[-1]} {k} = {_pfad(tex)}")
+        logging.info(f"[ZB] Aussehen: Material '{art}' fuer {quelle.rsplit('.', 1)[-1]}: {_pfad(eltern)}")
+    # getauschte Komponenten sofort neu belegen (das Spiel haelt eigene Wrapper-Instanzen)
+    for comp in unrealsdk.find_all("SkeletalMeshComponent", exact=False):
+        try:
+            if _pfad(comp) in _skin_getauscht:
+                mic = next((m for n, m in _skin.values() if _pfad(n) == _pfad(comp.SkeletalMesh)), None)
+                if mic is not None:
+                    comp.SetMaterial(0, mic)
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def _skin_klasse_von(besitzer: UObject, pc: UObject, lokal: bool) -> bool:
+    """Traegt der Besitzer dieser Komponente den Chronomaster?"""
+    pawn = pc.Pawn if pc is not None else None
+    if pawn is None or "Pawn" not in besitzer.Class.Name:
+        return lokal                       # Menue-Charakter, Vorschau im Statusmenue
+    if _pfad(besitzer) == _pfad(pawn):
+        return lokal
+    try:                                   # Koop: fremder Pawn - nur Eigenschaften lesen
+        cls = besitzer.Controller.PlayerClass
+        return bool(cls is not None and _pfad(cls).endswith(f"CharClass_{CHARACTER_NAME}"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# v1.52: Schnellscan. find_all("SkeletalMeshComponent") lieferte in Sanctuary jede NPC-/Gegner-Komponente
+# samt Archetypen: 14,7 ms im Mittel, 29,9 ms hoechstens, alle 30 Frames (zb fps, 2026-10-02). Wir brauchen
+# nur Komponenten an Spielerfiguren und an der Menuefigur. Felder laut Dump: Actor.Components,
+# Pawn.Mesh/Arms/HeadMesh, PlayerStandIn.PlayerMeshComp. Der Vollscan bleibt als Gegenprobe (seltener).
+SKIN_TRAEGER = ("WillowPlayerPawn", "PlayerStandIn")
+SKIN_TRAEGER_FELDER = ("Mesh", "Arms", "HeadMesh", "PlayerMeshComp")
+# v1.54: find_all geht IMMER die ganze Objektliste durch (~9 ms je Aufruf, egal wie wenige Treffer):
+# v1.53 mit drei find_all je Schnellscan kostete 28 ms im Mittel, 101 ms hoechstens (gemessen). Der
+# Schnellscan nimmt deshalb gar keinen mehr: Spieler ueber WorldInfo.PawnList/NextPawn (Dump), Menuefigur und
+# Koepfe ueber Pfade, die der Vollscan merkt und die jedes Mal frisch per find_object (Hash) gesucht werden.
+SKIN_VOLLSCAN_TICKS = 1800         # Sicherheitsnetz ~30 s; sonst nur bei Bedarf (_skin_voll_bald)
+_skin_vollscan_zaehler = 0
+_skin_voll_bald = True             # naechster Tick scannt voll: Start, neuer Tausch, Pfad verschwunden
+_skin_merk: list[tuple[str, str]] = []   # (Klasse, Pfad): Menuefiguren und Koepfe, vom Vollscan
+_skin_luecken: set[str] = set()    # Komponenten, die nur der Vollscan fand (einmal loggen)
+
+
+def _skin_komponenten_von(actor: UObject, out: list, gesehen: set) -> None:
+    """Mesh-Komponenten eines Traegers (nur Eigenschaften lesen)."""
+    teile = [getattr(actor, f, None) for f in SKIN_TRAEGER_FELDER]
+    teile += list(actor.Components)
+    for c in teile:
+        if c is None:
+            continue
+        try:
+            c.SkeletalMesh            # kein SkeletalMeshComponent -> AttributeError
+        except Exception:  # noqa: BLE001
+            continue
+        cp = _pfad(c)                 # Pfad statt id(): das SDK liefert je Zugriff neue Huellen
+        if cp not in gesehen:
+            gesehen.add(cp)
+            out.append(c)
+
+
+def _skin_kandidaten_schnell() -> tuple[list[UObject], bool]:
+    """(Komponenten, ob ein gemerkter Pfad fehlt). Ohne find_all."""
+    out, gesehen = [], set()
+    pc = local_pc()
+    try:
+        p, n = pc.WorldInfo.PawnList, 0
+        while p is not None and n < 512:
+            if p.Class.Name in SKIN_TRAEGER:
+                _skin_komponenten_von(p, out, gesehen)
+            p, n = p.NextPawn, n + 1
+    except Exception:  # noqa: BLE001
+        pass
+    fehlt = False
+    for klasse, pfad in _skin_merk:
+        o = _find(klasse, pfad)
+        if o is None:
+            fehlt = True
+            continue
+        try:
+            if klasse in SKIN_TRAEGER:
+                _skin_komponenten_von(o, out, gesehen)
+            elif pfad not in gesehen:
+                gesehen.add(pfad)
+                out.append(o)
+        except Exception:  # noqa: BLE001
+            continue
+    return out, fehlt
+
+
+def skin_scan(grund: str, voll: bool = False) -> None:
+    global _skin_letzte_klasse
+    if not _skin:
+        return
+    pc = local_pc()
+    klasse = player_class(pc) if pc is not None else None
+    if klasse is None and pc is not None:
+        # Hauptmenue: pc.PlayerClass ist None (v1.41, Log). Der angezeigte Charakter steht im
+        # gecachten Spielstand - nur lesen (die Kopie ist ohnehin schreibgeschuetzt).
+        try:
+            sg = pc.GetCachedSaveGame()
+            if sg is not None and sg.PlayerClassDefinition is not None:
+                klasse = "Menue:" + _pfad(sg.PlayerClassDefinition)
+        except Exception:  # noqa: BLE001
+            pass
+    if klasse != _skin_letzte_klasse:
+        logging.info(f"[ZB] Aussehen: lokale Klasse {klasse} ({grund})")
+        _skin_letzte_klasse = klasse
+    lokal = _skin_an and bool(klasse and klasse.endswith(f"CharClass_{CHARACTER_NAME}"))
+    aktion: list[str] = []
+    # v1.45: erst nach Mesh filtern (ein Pfadaufruf je Komponente), alles andere nur fuer die wenigen
+    # Treffer. v1.44 hat gemessen: 24-31 ms je Scan, weil jede der vielen Komponenten mehrere
+    # _path_name-Aufrufe bekam - im Spiel ein Ruckler alle 10 Frames.
+    unsere = {_pfad(n) for n, _ in _skin.values()}
+    comps = []
+    mesh_von: dict[int, str] = {}
+    global _skin_voll_bald
+    if voll:
+        quelle = unrealsdk.find_all("SkeletalMeshComponent", exact=False)
+    else:
+        quelle, fehlt = _skin_kandidaten_schnell()
+        if fehlt:
+            _skin_voll_bald = True        # Menuefigur/Kopf weg (Levelwechsel, Respawn): neu suchen
+    for comp in quelle:
+        try:
+            mesh = comp.SkeletalMesh
+            if mesh is None:
+                continue
+            mp = _pfad(mesh)
+            if mp not in _skin and mp not in unsere and not mp.startswith(SKIN_KOPF_PRAEFIX):
+                continue
+            if comp.Owner is None or "Default__" in _pfad(comp):
+                continue
+            mesh_von[id(comp)] = mp
+            comps.append(comp)
+        except Exception:  # noqa: BLE001 - halb abgebaute Komponenten
+            continue
+    if voll:
+        # Gegenprobe: was haette der Schnellscan (mit den alten Merk-Pfaden) nicht gesehen?
+        schnell = {_pfad(c) for c in _skin_kandidaten_schnell()[0]}
+        merk: list[tuple[str, str]] = []
+        for comp in comps:
+            cp = _pfad(comp)
+            try:
+                besitzer = comp.Owner
+                if besitzer.Class.Name not in SKIN_TRAEGER:
+                    continue
+                # Merken fuer den Schnellscan: Menuefiguren (nicht in der Pawn-Liste) und Koepfe
+                if besitzer.Class.Name == "PlayerStandIn":
+                    eintrag = ("PlayerStandIn", _pfad(besitzer))
+                    if eintrag not in merk:
+                        merk.append(eintrag)
+                if mesh_von[id(comp)].startswith(SKIN_KOPF_PRAEFIX):
+                    merk.append((comp.Class.Name, cp))
+                    continue              # Koepfe kommen ab jetzt ueber merk - keine Luecke
+            except Exception:  # noqa: BLE001
+                continue
+            if cp not in schnell and cp not in _skin_luecken:
+                _skin_luecken.add(cp)
+                logging.info(f"[ZB] Aussehen: LUECKE - nur der Vollscan fand {cp} "
+                             f"(Mesh {mesh_von[id(comp)]}, Besitzer {_pfad(comp.Owner)})")
+        _skin_merk[:] = merk
+        _skin_voll_bald = False
+    besitzer_mit_skin: set[str] = set()
+    for comp in comps:
+        try:
+            cpfad, mesh_pfad, besitzer = _pfad(comp), mesh_von[id(comp)], comp.Owner
+            if mesh_pfad.startswith(SKIN_KOPF_PRAEFIX):
+                continue
+            soll = _skin_an and _skin_klasse_von(besitzer, pc, lokal)
+            if mesh_pfad in _skin and soll:
+                neu, mic = _skin[mesh_pfad]
+                # v1.53: nur PFADE merken. Die Materialien sind oft fluechtige Instanzen des Spiels; die
+                # gemerkten Huellen zeigten beim Zuruecktauschen auf geloeschte Objekte -> Absturz (v1.52)
+                mats = [(m.Class.Name, _pfad(m)) if m is not None else None for m in comp.Materials]
+                _skin_getauscht[cpfad] = (mesh_pfad, mats, _pfad(besitzer))
+                comp.SetSkeletalMesh(neu, False)
+                comp.SetMaterial(0, mic)
+                aktion.append(f"getauscht {cpfad}")
+                if not voll:
+                    _skin_voll_bald = True    # neuer Koerper (Statusmenue, Respawn) = neuer Kopf: suchen
+            elif cpfad in _skin_getauscht and not soll:
+                alt_pfad, mats, _ = _skin_getauscht.pop(cpfad)
+                alt = _find("SkeletalMesh", alt_pfad)          # frisch suchen, nie gemerkte Huellen
+                if alt is None:
+                    logging.error(f"[ZB] Aussehen: Original-Mesh {alt_pfad} nicht mehr da - {cpfad} bleibt")
+                    continue
+                comp.SetSkeletalMesh(alt, False)
+                weg = 0
+                for i, eintrag in enumerate(mats):
+                    m = _find(*eintrag) if eintrag else None
+                    weg += eintrag is not None and m is None
+                    comp.SetMaterial(i, m)                     # None = Standardmaterial des Meshes
+                aktion.append(f"zurueck {cpfad}" + (f" ({weg} Material(ien) nicht mehr da)" if weg else ""))
+            elif cpfad in _skin_getauscht:
+                # das Spiel wickelt unser Material in eigene Instanzen (Schild, Status) - nur ersetzen,
+                # wenn es nicht mehr von unserem abstammt
+                mic = next((m for n, m in _skin.values() if _pfad(n) == mesh_pfad), None)
+                erstes = comp.Materials[0] if len(comp.Materials) else None
+                kette, ziel = erstes, _pfad(mic)
+                for _ in range(8):
+                    if kette is None or _pfad(kette) == ziel:
+                        break
+                    kette = getattr(kette, "Parent", None)
+                if mic is not None and kette is None:
+                    comp.SetMaterial(0, mic)
+                    aktion.append(f"Material erneut {cpfad}")
+            if cpfad in _skin_getauscht:
+                besitzer_mit_skin.add(_pfad(besitzer))
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Aussehen: {ex}")
+    for comp in comps:   # Koepfe: an getauschten Besitzern aus, sonst wieder an
+        try:
+            if not mesh_von[id(comp)].startswith(SKIN_KOPF_PRAEFIX):
+                continue
+            cpfad, besitzer = _pfad(comp), _pfad(comp.Owner)
+            if besitzer in besitzer_mit_skin and not comp.HiddenGame:
+                comp.SetHidden(True)
+                _skin_versteckt[cpfad] = besitzer
+                aktion.append(f"Kopf aus {cpfad}")
+            elif cpfad in _skin_versteckt and besitzer not in besitzer_mit_skin:
+                comp.SetHidden(False)
+                del _skin_versteckt[cpfad]
+                aktion.append(f"Kopf an {cpfad}")
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Aussehen (Kopf): {ex}")
+    if aktion:
+        logging.info(f"[ZB] Aussehen ({grund}): {len(aktion)} Aenderung(en): {'; '.join(aktion[:6])}")
+
+
+_skin_zeit = [0.0, 0, 0.0]   # Summe s, Anzahl Scans, laengster Scan s (v1.44: "Spiel fuehlt sich langsamer an")
+
+
+# zb fps [Sekunden] (v1.51): Frame-Zeiten zwischen zwei Viewport-Ticks. Vergleich eigenes Modell gegen
+# Zer0 an derselben Stelle: "zb fps 15", dann "zb skin aus", "zb fps 15", "zb skin an".
+_fps_zeiten: list[float] = []
+_fps_letzt = 0.0
+_fps_ende = 0.0
+_fps_name = ""
+
+
+def fps_start(sekunden: float) -> None:
+    global _fps_letzt, _fps_ende, _fps_name
+    _fps_zeiten.clear()
+    _fps_letzt = 0.0
+    _fps_ende = time.perf_counter() + sekunden
+    _fps_name = f"Modell {'an' if _skin_an else 'aus (Zer0)'}"
+    logging.info(f"[ZB] FPS: Messung {sekunden:.0f} s laeuft ({_fps_name}) - nicht bewegen")
+
+
+def _fps_tick() -> None:
+    global _fps_letzt, _fps_ende
+    jetzt = time.perf_counter()
+    if _fps_letzt:
+        _fps_zeiten.append(jetzt - _fps_letzt)
+    _fps_letzt = jetzt
+    if jetzt < _fps_ende:
+        return
+    _fps_ende = 0.0
+    z = sorted(_fps_zeiten)
+    if len(z) < 10:
+        logging.info("[ZB] FPS: zu wenige Frames")
+        return
+    mittel = sum(z) / len(z)
+    eins = z[int(len(z) * 0.99):]                      # die langsamsten 1 %
+    logging.info(f"[ZB] FPS ({_fps_name}): {len(z)} Frames, Mittel {1 / mittel:.1f} fps ({1000 * mittel:.2f} ms), "
+                 f"Median {1000 * z[len(z) // 2]:.2f} ms, 1%-Low {1 / (sum(eins) / len(eins)):.1f} fps, "
+                 f"schlechtester Frame {1000 * z[-1]:.1f} ms")
+
+
+def _on_viewport_tick(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _skin_zaehler, _skin_vollscan_zaehler
+    if _fps_ende:
+        _fps_tick()
+    _skin_zaehler += 1
+    if _skin_zaehler < SKIN_TICKS:
+        return
+    _skin_zaehler = 0
+    _skin_vollscan_zaehler += SKIN_TICKS
+    voll = _skin_voll_bald or _skin_vollscan_zaehler >= SKIN_VOLLSCAN_TICKS
+    if voll:
+        _skin_vollscan_zaehler = 0
+    t0 = time.perf_counter()
+    try:
+        _skin_laden()
+        skin_scan("tick voll" if voll else "tick", voll=voll)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Aussehen: {ex}")
+    dt = time.perf_counter() - t0
+    z = _skin_zeit_voll if voll else _skin_zeit
+    z[0] += dt
+    z[1] += 1
+    z[2] = max(z[2], dt)
+    if _skin_zeit[1] and _skin_zeit[1] % 600 == 0 and not voll:
+        _skin_zeit_loggen()
+
+
+_skin_zeit_voll = [0.0, 0, 0.0]   # v1.52: Vollscan (Gegenprobe) getrennt gezaehlt
+
+
+def _skin_zeit_loggen() -> None:
+    for name, z, takt in (("Schnellscan", _skin_zeit, SKIN_TICKS), ("Vollscan", _skin_zeit_voll, SKIN_VOLLSCAN_TICKS)):
+        n = max(1, z[1])
+        logging.info(f"[ZB] Aussehen-{name}: {z[1]} Scans, im Mittel {1000 * z[0] / n:.2f} ms, "
+                     f"laengster {1000 * z[2]:.2f} ms (alle {takt} Frames)")
+
+
+def skin_befehl(arg: str) -> None:
+    global _skin_an
+    if arg.startswith("mat"):
+        skin_material(arg.split(" ", 1)[1] if " " in arg else "")
+        return
+    if arg in ("an", "aus"):
+        _skin_an = arg == "an"
+        skin_scan(f"zb skin {arg}", voll=True)
+    _skin_zeit_loggen()
+    for cpfad, (alt_pfad, _, besitzer) in _skin_getauscht.items():
+        logging.info(f"[ZB] Aussehen: {cpfad} (Besitzer {besitzer}, vorher {alt_pfad})")
+    logging.info(f"[ZB] Aussehen: {'an' if _skin_an else 'aus'}, {len(_skin)} Meshes geladen, "
+                 f"{len(_skin_getauscht)} getauscht, {len(_skin_versteckt)} Koepfe aus, Klasse {_skin_letzte_klasse}")
+
+
 def on_enable() -> None:
     register_tracers()
     ensure_seventh_character()
@@ -6427,6 +6954,13 @@ def on_enable() -> None:
 
 
 def on_disable() -> None:
+    global _skin_an
+    try:
+        _skin_an = False
+        skin_scan("Modul deaktiviert", voll=True)   # Zer0s Mesh und Kopf zurueck
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Aussehen zuruecksetzen: {ex}")
+    _skin_an = True
     unregister_tracers()
     zeitspur_alle_zuruecksetzen()
     for zweck in {h[2] for h in _hologramme}:
@@ -6560,6 +7094,12 @@ def zb(args: Any) -> None:
                 logging.info(f"[ZB] zb icons {' | '.join(ICON_KLASSEN)} [START] | zurueck")
             else:
                 icons_katalog(args.args[0].lower(), int(args.args[1]) if len(args.args) > 1 else 0)
+        case "skin":
+            # zb skin [an|aus|mat zer0|klassenmod] - eigenes Modell am Chronomaster (v1.41, mat v1.43)
+            skin_befehl(" ".join(args.args))
+        case "fps":
+            # zb fps [Sekunden] - Frame-Zeiten messen (v1.51)
+            fps_start(float(args.args[0]) if args.args else 15.0)
         case "rang":
             # zb rang NAME - Punkte des Spielers in einem Baum-Skill (prueft PlayerSkillTree.GetSkillGrade)
             for n in (args.args or list(SKILL_OUTER)):
@@ -6683,7 +7223,7 @@ def zb(args: Any) -> None:
             )
 
 
-zb.add_argument("action", choices=["status", "legen", "zuenden", "ende", "loeschen", "bombe", "meshes", "rang", "wirkung", "attr", "props", "funcs", "enum", "namen", "gegner", "ziel", "stoss", "schaden", "zeitlupe", "ffyl", "fasttot", "fenster", "holo", "koop", "schatten", "effekte", "immun", "stapeltest", "ammo", "dejavu", "spur", "kopie", "baum", "pakete", "askill", "skill", "xp", "respec", "cash", "trace", "granate", "icons"])
+zb.add_argument("action", choices=["status", "legen", "zuenden", "ende", "loeschen", "bombe", "meshes", "rang", "wirkung", "attr", "props", "funcs", "enum", "namen", "gegner", "ziel", "stoss", "schaden", "zeitlupe", "ffyl", "fasttot", "fenster", "holo", "koop", "schatten", "effekte", "immun", "stapeltest", "ammo", "dejavu", "spur", "kopie", "baum", "pakete", "askill", "skill", "xp", "respec", "cash", "trace", "granate", "icons", "skin", "fps"])
 zb.add_argument("args", nargs="*")
 
 build_mod(
