@@ -1,6 +1,8 @@
 # Skills — Arbeitsliste (Phase 2)
 
-> Stand 2026-09-19. Entstanden aus den Konzepttabellen in `plan.md`, Abschnitt 2.4.
+> **Aktueller Stand (2026-10-10, v1.66): Abschnitt 9.** Die Abschnitte 5, 7b und 8 beschreiben die Bäume bis v1.55; zwölf der Skills dort gibt es nicht mehr. Abschnitte 1–4 und 6 (Zahlen, Attribute, Technik) gelten weiter.
+>
+> Ursprünglicher Stand 2026-09-19. Entstanden aus den Konzepttabellen in `plan.md`, Abschnitt 2.4.
 > **Alle `D_Attributes.*`-Pfade in diesem Dokument sind aus dem OpenBLCMM-Datenpaket verifiziert**
 > (`blcmm_data_BL2-2023-04-20-01.jar`, `data/BL2/dumps/`), jeweils belegt durch den Zer0-Skill in der
 > Spalte *Vorlage*. Was nicht belegt ist, steht unter „Offene Fragen" — nicht in den Tabellen.
@@ -63,7 +65,7 @@ Alles, was die 36 Skills brauchen, mit dem Zer0-Skill, aus dem es abgeschrieben 
 | Nahkampfschaden | `D_Attributes.DamageSourceModifiers.InstigatedMeleeDamageModifier` | `MT_Scale` | Ir0n Hand 0.03 |
 | Maximalleben | `D_Attributes.HealthResourcePool.HealthMaxValue_Player` | `MT_Scale` | Ir0n Hand 0.03 |
 | Lebensregeneration | `D_Attributes.HealthResourcePool.HealthActiveRegenerationRate` | `MT_Scale` | Innervate 0.008 |
-| Schildregeneration | `D_Attributes.ShieldResourcePool.ShieldPassiveRegenerationRate` | `MT_Scale` | Grim 0.007 |
+| Schildregeneration | `D_Attributes.ShieldResourcePool.ShieldOnIdleRegenerationRate` (= „Shield Recharge Rate“, Badass-Rang; v1.62 gemessen). **Nicht** `ShieldPassiveRegenerationRate` — das ist Dauerregeneration, Basis meist 0 | `MT_Scale` | `GD_Challenges.BadassSkill` |
 | Cooldown-Rate | `D_Attributes.ActiveSkillCooldownResource.ActiveSkillCooldownConsumptionRate` | `MT_Scale` | Grim 0.015 |
 | Schadensresistenz | `D_Attributes.DamageSourceModifiers.ReceivedBulletDamageModifier` | `MT_Scale` | — *(verifiziert; „alle Quellen" braucht je einen Eintrag für Bullet, Melee, Grenade, Rocket, StatusEffect)* |
 | Granatenschaden | `D_Attributes.DamageSourceModifiers.InstigatedGrenadeDamageModifier` | `MT_Scale` | — *(verifiziert)* |
@@ -284,7 +286,9 @@ Die deutschen Namen in diesem Dokument und in `plan.md`/`CHANGELOG.md` bleiben a
 
 ## 8. Status je Skill
 
-Stand 2026-09-26 abends (v1.33). Ein Skill ist erst „gemessen", wenn der Wert im Spiel abgelesen wurde (`CLAUDE.md`, Regel 3).
+Stand 2026-10-02 (v1.55): **an den Skills hat sich seit v1.33 nichts geändert** — 25 gemessen, 11 gebaut, 0 Platzhalter (letzte Zählung in der Tabelle unten). Die aktuellen Werte, wie Spieler sie sehen, stehen in `SKILLS.md` (englisch). **Als Nächstes steht eine Überarbeitung an** (Nutzer, 2026-10-02: „sehr oft langweilig und unspektakulär“); Vorgehen in `plan.md`, „Fahrplan“, Punkt 1.
+
+Ein Skill ist erst „gemessen", wenn der Wert im Spiel abgelesen wurde (`CLAUDE.md`, Regel 3).
 
 > **Zusammenfassung 2026-09-26 (v1.33) — die Tabelle unten ist die Geschichte mit Nachträgen, diese Liste der aktuelle Stand.**
 > - **0 Platzhalter, keine offenen Hälften.** Umgebaut auf Nutzerwunsch: *Sprengsatz* (Explosion beim Zünden, Element der Granate), *Ruecksprung-Detonation* → **Rueckenwind** (Feuerrate/Nachladen nach Sprungweite), *Zeitspur* → **Zeitwirbel** (Schock-Impuls am Anker), *Nachhall* (Schockwelle mit Schaden statt Rückstoß), die drei **Kill Skills** (*Deja-vu*, *Wiederholung*, *Vorstoss*) stapeln unbegrenzt mit HUD-Zahl.
@@ -313,7 +317,7 @@ Stand 2026-09-26 abends (v1.33). Ein Skill ist erst „gemessen", wenn der Wert 
 ⁷ `RemoveAllStatusEffects()` läuft fehlerfrei; ob ein Statuseffekt verschwindet, ist am Testcharakter nicht zu sehen. Die 2 s Immunität fehlen (wie ⁵).
 ⁸ Trifft (`WillowAIPawn_7 auf 5.2 m -> Schaden 198`), gleiche Trefferlogik wie *Zeitsprung*; die Lebensdifferenz ist für diesen Skill selbst noch nicht abgelesen.
 ⁹ Umkreis, Treffer und **Stagger wirken** (drei Testziele, v0.77). **Der Rückstoß ist geparkt:** fliegende Gegner fliegen 4,3–5,4 m, Bodengegner bleiben stehen (`PHYS_NavMeshWalking`) — die ganze Messreihe in `docs/spikes.md`, „Rückstoß an Gegnern".
-¹⁰ Umkreis, Frist und Rücksetzung laufen (`CustomTimeDilation 0.5` → nach 3 s `1.0`), **aber die Verlangsamung selbst ist offen:** Nutzer sah keine Zeitlupe; `zb zeitlupe` maß an Bodengegnern 0,0 m/s statt 2,5 (eher Einfrieren als Verlangsamen), Rakks unbeeinflusst, `GroundSpeed` unzuverlässig. Zwei Stichproben — Nutzerbeobachtung steht aus.
+¹⁰ **Überholt seit v1.05:** *Zeitspur* ist der *Zeitwirbel*, die Verlangsamung ist ausgebaut (Code v1.55). Geschichte: Umkreis, Frist und Rücksetzung liefen (`CustomTimeDilation 0.5` → nach 3 s `1.0`), **aber die Verlangsamung selbst ist offen:** Nutzer sah keine Zeitlupe; `zb zeitlupe` maß an Bodengegnern 0,0 m/s statt 2,5 (eher Einfrieren als Verlangsamen), Rakks unbeeinflusst, `GroundSpeed` unzuverlässig. Zwei Stichproben — Nutzerbeobachtung steht aus.
 
 ¹¹ `Behavior_Explode` mit `Explosion_IncendiaryMaster` (Brandgranate erkannt), Schaden 689 = 5 × `GrenadeDamage` 138, Radius 10 m; Nutzer sah Explosion und Wirkung. **Im Log nicht abgelesen:** die Nachmessung läuft im selben Frame und fand 0 von 11 mit Lebensverlust — der Schaden kommt offenbar erst danach an. Für „gemessen" die Nachmessung um 1 s verzögern. Offen auch, ob `GrenadeDamage` (138) der skalierte Wert ist — bei Stufe 80 wirkt er klein.
 
@@ -322,3 +326,159 @@ Stand 2026-09-26 abends (v1.33). Ein Skill ist erst „gemessen", wenn der Wert 
 **Messregel (v0.60):** Scale-Modifikatoren **addieren** sich auf die Basis (Innervate: 440 × (1 + 0,15 + 0,35) = 660). „+10 % Waffenschaden" heißt +10 % der Waffen-Basis (22,17 je Kugel bei der Test-Flinte), nicht des angezeigten Endwerts — der enthält schon alle anderen Boni.
 
 **Abweichung vom Entwurf:** *Stabilisator* und *Sicherer Abstand* decken vier Schadensquellen (Kugel, Nahkampf, Granate, Rakete), nicht fünf — die Vorlage Precisi0n hat vier Effektplätze, und Struct-Arrays lassen sich per SDK kürzen, nicht verlängern.
+
+## 9. Überarbeitung 2026-10 (vom Nutzer abgestimmt am 2026-10-03; Stand v1.72: alle 13 gebaut)
+
+**Anlass:** Der Nutzer findet die Skills „oft langweilig und unspektakulär“. Etwa die Hälfte sind reine Prozent-Boni. Die neuen Ideen stammen aus einer Liste, die **inlecebra** auf Nexus gepostet hat (2026-10-03, aus einem unfertigen Slay-the-Spire-Zeitmagier; **der Nutzer hat Credits zugesagt** → seit v1.66 in der README). Der Nutzer hat ausgewählt, Claude hat Zahlen und Technik vorgeschlagen.
+
+**Designregel (Nutzer, 2026-10-03):** Jeder Skill muss **für sich allein** etwas Spürbares tun. Synergien zwischen Skills sind „SUPER GUT“, aber nur als Bonus obendrauf. Ein reiner Verstärker anderer Skills fliegt raus (*Fuse Shortener*).
+
+**Ampel:**
+- 🟢 Technik im Spiel bewiesen.
+- 🟡 Ein Teil ist neu.
+- 🔴 Erst ein Test (Spike), ob es überhaupt geht.
+
+Alle Zahlen sind Vorschläge für die erste Fassung.
+
+### 9.1 Austauschliste
+
+| Baum | Tier | Raus | Rein | Ränge | Ampel | Status |
+|---|---|---|---|---|---|---|
+| Hindsight | 2 | Deja Vu (+ Encore, Push Forward) | **Haste Stacks** | 5 | 🟡 | ✅ **gebaut v1.61, im Spiel bestätigt** |
+| Hindsight | 3 | Prior Record | **Paradox** (vom Capstone herunter, jetzt mit Rängen) | 5 | 🟢 | **getauscht v1.56**, wirkt (10 % je Rang, Mechanik von früher). Nachtest offen: im Test 2026-10-09 „nichts im Buch“ |
+| Hindsight | 3 | Encore | **Return to Sender** (*Fuse Shortener* abgelehnt) | 5 | 🟡 (Rückfall 🟢) | ✅ **gebaut v1.60, im Spiel bestätigt** (Hook am Spieler bewiesen) |
+| Hindsight | 6 | (Paradox) | **Time Freeze** (Capstone) | 1 | 🟢 | ✅ **gebaut v1.71, im Spiel bestätigt** |
+| Rewind | 2 | Stabilizer | **Borrowed Health** | 5 | 🟢 | ✅ **gebaut v1.59, im Spiel bestätigt** |
+| Rewind | 3 | Second Opinion | **Guaranteed Crits** | 5 | 🟢 | ✅ **gebaut v1.72, im Spiel bestätigt** |
+| Rewind | 5 | Homecoming | **Crunch Time** | 1 | 🟢 | ✅ **gebaut v1.69**, Faktor im Spiel gemessen |
+| Overclock | 1 | Distance | **Refill** (*Mag Rewind* und *Burn Fuel* verworfen) | 5 | 🟢 | ✅ **gebaut v1.57, gemessen** (+8 bei 33er-Magazin R5, Reserve unverändert) |
+| Overclock | 2 | Push Forward | **Dimensional Loop** | 5 | 🔴 | ✅ **gebaut v1.64, im Spiel bestätigt** |
+| Overclock | 2 | Safe Distance | **Grenade Recall** | 5 | 🟢 | ✅ **gebaut v1.68, im Spiel bestätigt** |
+| Overclock | 3 | Long Shot | **Echo Bullet** | 5 | 🔴 | ✅ **gebaut v1.63b, im Spiel bestätigt** |
+| Overclock | 4 | Tailwind | **Time Loop** | 1 | 🔴 | ✅ **gebaut v1.65d, im Spiel bestätigt** |
+| Overclock | 5 | Borderlander | **Infinite** | 1 | 🟢 | ✅ **gebaut v1.58, im Spiel bestätigt** |
+
+**Time Skip (Overclock T6, Capstone):** Der Nutzer findet ihn „eigentlich auch kein cooler Skill“ (2026-10-03). **Ersetzt durch *Unspent Time* (v1.73):** Jeder Kill explodiert im Element der Waffe (1,5× Waffenschaden seit v1.73b, 5 m), Kills daraus explodieren wieder. Gewählt, weil er ohne Setup wirkt und keine vorhandenen Skills bündelt. Interner Schlüssel bleibt `Zeitsprung`.
+
+**Baum 3 heißt künftig „Overclock“** (Platzhalter, Nutzer). Detour verliert sein Entfernungsthema und wird zum Waffen-, Munitions- und Granatenbaum.
+
+Unverändert bleiben:
+- **Hindsight:** Memory, Aftermath, Tension, Reverberation, Recollection, Recurrence, Long-Term Memory, Time Vortex.
+- **Rewind:** Refresh, Standby, Full Refund, Cleanse, Time Capsule, It Never Happened, Afterimage, Parting Gift, Shadow Anchor.
+- **Overclock:** Open Road, Breakout, Ambush, Stay the Course, Point of No Return, Time Skip.
+
+### 9.2 Die neuen Skills im Einzelnen
+
+**Haste Stacks** (Hindsight T2, 5 Ränge)
+- Kills geben einen Stack. Dauerfeuer gibt alle 2 s ununterbrochenen Schießens einen Stack.
+- Je Stack: Feuerrate, Nachladen und Schildladerate, etwa +1,5 % je Stack bei Rang 5.
+- **Obergrenze 20 Stacks, davon höchstens 10 aus Dauerfeuer.** Grund: Waffen wie die Infinity.
+- Die HUD-Zahl bleibt; *Recollection* funktioniert weiter. Abbau wie bisher: ab 3 s nach dem letzten Kill ein Stack je Sekunde.
+- **Dauerfeuer NICHT am sinkenden Magazin erkennen** (Nutzer): Die Infinity verbraucht kein Magazin.
+- **Gebaut v1.61:** 0,3 % je Stack und Rang. Dauerfeuer = Schüsse mit höchstens 1 s Abstand, je 2 s ein Stack. Erkannt am Hook `WillowWeapon:FireAmmunition` (PRE, nur die eigene Waffe). Feuer-Stacks fallen zuerst. Schildaufladung über `ShieldOnIdleRegenerationRate` (v1.61b).
+
+**Paradox** (Hindsight T3, jetzt 5 Ränge)
+- Wie bisher: Beim Zünden trifft aller Schaden, den man mit liegender Bombe ausgeteilt hat, dieselben Gegner noch einmal.
+- Neu: **10 % je Rang** (bis 50 %) statt fest 50 %.
+
+**Return to Sender** (Hindsight T3, 5 Ränge; Nutzer 2026-10-03)
+- Schaden, den du nimmst, solange die Bombe liegt, wird gesammelt. Beim Zünden kommt **25 % je Rang** davon zurück (bis 125 %; v1.60b, vorher 20 %).
+- **Gewünscht:** Der Schaden trifft genau die Gegner, die dich verletzt haben, jeder an seiner Position, anteilig nach dem, was er dir angetan hat. So unterscheidet sich der Skill von *Reverberation*, die ebenfalls am Ankunftsort explodiert.
+- Bestehende Skills machen so etwas nicht: *Reverberation* und *Parting Gift* hängen am Granatenschaden, *Paradox* am ausgeteilten Schaden.
+- **Gebaut v1.60:** Hook `WillowPlayerPawn:TakeDamage` (PRE/POST) bucht den echten Verlust an Leben + Schild je Urheber (`InstigatedBy.Pawn`, sonst `Pipeline.DamageInstigator`). Beim Zünden bekommt jeder lebende Urheber seinen Anteil über `_treffer`.
+- *Fuse Shortener* (vorher auf diesem Platz) ist abgelehnt: Allein nützt er nichts.
+
+**Refill** (Overclock T1, 5 Ränge; Nutzer 2026-10-03: „hört sich super an“)
+- Jeder Kill füllt **5 % je Rang des Magazins** wieder auf (bis 25 %), ohne die Reserve zu verbrauchen.
+- **Gebaut v1.57:** Pool und `ReloadCnt` gemeinsam erhöhen (der Pool enthält das Magazin). *Burn Fuel* ist damit verworfen.
+
+**Time Freeze** (Hindsight T6, Capstone)
+- Beim Wurf erstarren **alle Gegner im Umkreis**: Vorschlag 25 m um den Landepunkt bzw. den Wurfpunkt, im Spike festlegen.
+- **Bosse frieren genauso ein** (Nutzer).
+- Wer getroffen wird, taut auf; **dieser erste Treffer macht doppelten Schaden**. Alle anderen bleiben gefroren, bis die Bombe weg ist (Zünden oder Verpuffen).
+- **Wer den Kreis erst danach betritt, verhält sich normal** (Nutzer). Es wird nur einmal beim Wurf eingefroren.
+- **Gebaut v1.71:** 25 m um den Landepunkt. Einfrieren = KI aus + jeden Frame Ort/Tempo zurück + `bPauseAnims` (`docs/spikes.md`, „Gegner einfrieren“; `bIsCriticalActor` taugte nicht). Gefrorene nehmen Schaden. Der doppelte Schaden kommt einen Tick nach dem ersten Treffer über `_treffer`. Auftauen in `bombe_weg` und `on_disable`.
+
+**Borrowed Health** (Rewind T2, 5 Ränge)
+- Zünden heilt sofort **12 % des maximalen Lebens je Rang** (bis 60 %; v1.59d, vorher 10 %).
+- Danach werden über **15 s** (v1.59b, vorher 6) **das Doppelte** abgezogen, nie unter 1 Leben. **Faktor 1,25 statt das Doppelte** (v1.59c, Nutzer).
+- **Jeder Kill in diesen 15 s tilgt 25 % der Anfangsschuld** (Nutzer: okay).
+- **Gebaut v1.59:** Schuld = 1,25 × die tatsächlich geheilte Menge (bei vollem Leben keine). Der Tick zahlt Rest / Restzeit je Frame ab.
+
+**Guaranteed Crits** (Rewind T3, 5 Ränge)
+- Nach dem Zünden ist **1 s je Rang jeder Treffer kritisch** (bis 5 s).
+- **Gebaut v1.72:** Kein Attribut, sondern die Trefferzonen: alle geladenen `BodyHitRegionDefinition.bCriticalHit = True` (außer `GD_PlayerShared`), danach zurück (`docs/spikes.md`, „Kritische Treffer erzwingen“).
+- ~~**Rückfall 🟢:**~~ (nicht nötig geworden) Über den Schadens-Hook bekommt jeder Treffer in diesem Fenster den Krit-Bonus obendrauf. Die Zahl stimmt dann, aber es gibt kein „Critical!“, und Krit-Effekte der Waffen lösen nicht aus.
+
+**Crunch Time** (Rewind T5, 1 Rang)
+- Je früher man zündet, desto stärker. Restzeit-Faktor: voll bei ≥ 15 s Rest, linear bis 0.
+- *Reverberation* und *Parting Gift* bekommen bis zu doppelten Schaden.
+- Zusätzlich explodiert die Bombe selbst am Anker: 1× Granatenschaden × Faktor.
+- **Gebaut v1.69:** Faktor = 1 + min(1, Rest / 15 s), Rest aus der Skill-Instanz (`StartTime + Duration`) beim Zünden. Die Bombe explodiert am Ankunftsort mit Faktor × Granatenschaden (also mindestens 1×), 8 m, im Element der Granate.
+
+**Dimensional Loop** (Overclock T2, 5 Ränge)
+- Nach jedem Nachladen feuern die ersten Schüsse doppelt, **1 Schuss je Rang**.
+- **Gebaut v1.64:** Nachladen über `WillowWeapon:PlayReloadAnim` (PRE); fertig ist es, wenn das Magazin beim nächsten Schuss voller ist. Doppelschuss wie bei *Echo Bullet*. HUD Platz 3.
+
+**Grenade Recall** (Overclock T2, 5 Ränge)
+- Eine geworfene Granate kommt mit **6 % Chance je Rang** zurück (bis 30 %).
+- **Gebaut v1.68:** Gewürfelt wird im Wurf-Hook `ThrowGrenade` (POST); der Zweitwurf von *Time Loop* zählt nicht. 2,5 s nach dem Wurf +1 in `Ammo_Grenade_Protean_Pool`, höchstens bis zum Vorrat beim Wurf (das Spiel zieht erst nach ~1 s ab, *Time Loop* rechnet nach ~1,9 s ab).
+
+**Echo Bullet** (Overclock T3, 5 Ränge)
+- **Jeder N-te Schuss feuert doppelt:** Rang 1 jeder 10., Rang 5 jeder 5.
+- **Gebaut v1.63b:** Im POST von `FireAmmunition` ruft das Modul `weapon.FireAmmunition()` ein zweites Mal (Rekursionssperre) und erstattet die Munition. `WillowWeapon.ProjectilesPerShot` zu setzen wirkte nicht (v1.63). HUD Platz 2 zählt die Schüsse.
+
+**Time Loop** (Overclock T4, 1 Rang)
+- **Alle 5 Kills lädt es sich auf** (HUD-Anzeige). Die nächste Granate wird ein zweites Mal geworfen, 0,5 s später, als Kopie der ausgerüsteten Granate.
+- **Gebaut v1.65d:** `pc.ThrowGrenade(ProjectileDefinition)` mit der Definition aus dem echten Wurf, gestartet nach `GrenadeThrowComplete` (etwa 0,4 s). Es ist ein echter Wurf des Spiels, also mit der ausgerüsteten Granate. Abrechnung am Ende: Beide Würfe zusammen kosten 1 Granate. HUD Platz 6.
+
+**Infinite** (Overclock T5, 1 Rang)
+- **Die ersten 5 s nach dem Wurf unendlich Munition** (Auslöser a, Nutzer): Das Magazin wird laufend aufgefüllt.
+- **Gebaut v1.58:** Der Tick hält 5 s lang das Magazin der Waffe in der Hand voll (Rezept *Refill*).
+
+### 9.3 Reihenfolge
+
+1. **Spikes zuerst** (Stand v1.72: alle erledigt):
+   - ~~*Time Freeze*: `bIsCriticalActor`~~ — gelöst anders: KI aus + Festhalten (v1.70b).
+   - ~~*Echo Bullet* und *Dimensional Loop*: Projektile pro Schuss~~ — gelöst über einen zweiten `FireAmmunition()`-Aufruf (v1.63b).
+   - ~~*Time Loop*: die Granate nachspawnen~~ — gelöst über `pc.ThrowGrenade(def)` (v1.65d).
+   - ~~*Guaranteed Crits*: Attribut~~ — gelöst über `bCriticalHit` der Trefferzonen (v1.72).
+   - ~~Feuer-Hook für *Haste Stacks*~~ — bewiesen (v1.61).
+   - ~~Schadens-Hook am Spieler mit Urheber für *Return to Sender*~~ — bewiesen (v1.60).
+   - Scheitert ein Spike, sucht der Nutzer einen Ersatz aus.
+   - **Vorarbeit aus dem BO2-Projekt** (`..\bo2 in anderen games ig`, gelesen 2026-10-09; Schadens-Hook am Spieler, Feuer-Hook und `PlayReloadAnim` sind inzwischen auch bei uns bewiesen):
+     - **Schadens-Hook am Spieler** (*Return to Sender*): `WillowGame.WillowPlayerPawn:TakeDamage` (PRE). Parameter `Damage, InstigatedBy, HitLocation, Momentum, DamageType, HitInfo, HitDir, Pipeline`, kein `DamageCauser`. Urheber: `InstigatedBy.Pawn`, sonst `Pipeline.DamageInstigator`; nur Objekte mit `Location` nehmen (sonst kommt z. B. eine `MeleeDefinition`). **`WillowPawn:TakeDamage` feuert für Spieler fast nie** (2× in 7 min). BO2 Test 76.
+     - **Feuer-Hook** (*Haste Stacks*, *Echo Bullet*): `WillowGame.WillowWeapon:FireAmmunition` (PRE) feuert je Schuss (BO2 `waffensound.py`, Test 53). Daneben `PlayReloadAnim`/`StopReloadAnim` (Nachladen erkennen, *Dimensional Loop*) und `OnEquip`. Nur die Waffe des lokalen Spielers auswerten.
+     - **Projektile pro Schuss**: `WeaponTypeDefinition.ProjectilesPerShot` wirkt (BO2 Executioner 1 → 8), sitzt aber am Waffentyp, den sich alle Waffen teilen. Bei uns nicht gebraucht (Zusatzschuss, s. o.).
+     - **Nahkampf abfangen**: `WillowPlayerController:MeleeAttack` (PRE, Blocken geht). `MeleeDefinition.MeleeAttack(Pawn)` von Hand gerufen traf nichts (0 Treffer). Wichtig für einen späteren Melee-Override und für Bug B1 (`feedback.md`).
+     - **Item direkt ausgeben** (Class Mods, I8): `ItemPool.SpawnBalancedInventoryFromInventoryBalanceDefinition` → `AddInventoryToBackpack` (`waffen.py`).
+     - **Regel von dort:** Schleifen im Tick immer mit fester Obergrenze; Python `(-1e-14) % 512 == 512.0` hat das Spiel aufgehängt.
+2. Der Nutzer wählt den Ersatz für Overclock T1.
+3. Dann ein Skill nach dem anderen: bauen, messen, Changelog.
+4. ~~Kartentexte, `SKILLS.md`, README, Baumname~~ — erledigt (v1.66). Offen: eigene Icons statt der geerbten Platzhalter (`SKILL_ICONS`) und Skilltexte im BL2-Stil (`feedback.md`, I11).
+5. **Bestehende Spielstände (Nutzer: „müssen wir wohl“):** Die Punkte in entfernten Skills gingen sonst verloren oder hingen in leeren Feldern. Geplant ist ein **automatischer Respec** beim ersten Laden — **noch nicht gebaut**. Bis dahin rät die README zum Respec von Hand.
+
+### 9.4 Kandidaten für die zwei offenen Plätze (Vorschlag Claude, nicht abgestimmt)
+
+**Hindsight T3** (Thema: solange die Bombe liegt)
+
+| Kandidat | Was passiert | Ampel |
+|---|---|---|
+| **Flashback** | Bricht dein Schild, solange die Bombe liegt, springen Leben und Schild auf den Stand von vor 4 s zurück. Höchstens einmal je Bombe, Rang = mehr Sekunden oder weniger Cooldown. | 🟢 Ringpuffer (*Shadow Anchor*), Leben und Schild setzen. |
+| **Phase Out** | Bricht dein Schild, solange die Bombe liegt, wirst du 1 s je Rang unsichtbar: Gegner verlieren dich aus den Augen. | 🟡 Zer0s eigene Unsichtbarkeit, die wir bisher blocken, gezielt einschalten. |
+| **Banish** | Solange die Bombe liegt, hat jeder Treffer gegen Nicht-Bosse 1 % je Rang Chance auf einen Sofort-Kill. | 🟢 Schadens-Hook und Boss-Erkennung. |
+| **Return to Sender** | Schaden, den du nimmst, solange die Bombe liegt, wird gesammelt. Beim Zünden entlädt er sich als Explosion am Ankunftsort: 20 % je Rang des erlittenen Schadens. Gegenstück zu *Paradox* (ausgeteilter Schaden kommt wieder). | 🟢 Leben und Schild im Ticker vergleichen; Explosion über ein Projektil. |
+| **Chrono Leech** | Solange die Bombe liegt, heilen dich 2 % je Rang des ausgeteilten Schadens. | 🟢 Schadens-Hook und `SetHealth`. |
+| **Time Echo** | Gegner, die du tötest, solange die Bombe liegt, hinterlassen ein Echo, das 2 s später explodiert: Granatenschaden × 0,4 je Rang. Kettenreaktionen möglich. | 🟡 Kill-Hook; offen ist, ob der Hook den Ort des Gegners liefert. |
+| **Second Wind** | Jeder Kill, solange die Bombe liegt, lädt 5 % je Rang deines Schilds sofort auf. | 🟢 Schild setzen und Kill-Hook. |
+
+**Overclock T6, Capstone (Ersatz oder Umbau von *Time Skip*)** — entschieden: *Unspent Time* (= *Chain Reaction*, v1.73)
+
+| Kandidat | Was passiert | Ampel |
+|---|---|---|
+| **Rift** (Umbau) | Beim Zünden reißt die Linie zwischen Absprung und Anker auf. 5 s lang explodiert sie alle 0,5 s an mehreren Stellen und trifft alles, was sie kreuzt. | 🟢 Die Linie und Explosionen über Projektile gibt es schon. |
+| **Meteor Strike** | Solange die Bombe liegt, schlagen alle 2 s Meteore in Gegner in deiner Nähe ein, mit Element und Schaden deiner Waffe. | 🔴 Ein Geschoss vom Himmel fallen lassen (Spike wie bei *Time Loop*). |
+| **Chain Reaction** | Jeder Kill, solange die Bombe liegt, lässt den Gegner mit dem Element deiner Waffe explodieren. Die Explosion kann weitere Gegner töten. | 🟡 Kill-Hook und Ort des Gegners, wie bei *Time Echo*. |
+| **Event Horizon** | Beim Zünden reißt eine Singularität am Anker alle Gegner zusammen, dann folgt eine Explosion. | 🔴 Singularity-Granate als Original-Projektil; das wäre der einzige bekannte Weg, Bodengegner zu bewegen. |
+
+**Overclock T1:** entschieden für *Refill*. Übrig als Idee bleibt **Quick Draw**: Weggesteckte Waffen laden von selbst nach. Technik 🟡, bei weggesteckten Waffen ungeprüft.

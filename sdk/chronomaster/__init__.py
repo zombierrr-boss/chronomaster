@@ -1,129 +1,62 @@
 """
 Chronomaster in Borderlands 2 - SDK-Modul "chronomaster" (bis v1.34 "zeitbombe"). Version: siehe __version__ unten.
 
-Stand 2026-09-23, Sitzungsende (v0.92):
-  - Phase 1/2 durch. Spike A (Zeit-Dilation) an Gegnern WIDERLEGT (v0.88, docs/spikes.md).
-  - Phase 3 KOMPLETT und im Spiel bestaetigt: Legen, Zuenden, Verpuffen, 20-s-Fenster, 35-s-Cooldown
-    (17,5 s beim Verpuffen), Caesium-Ladung am Anker, Zer0s Hologramm/Unsichtbarkeit/Markierung/Klang
-    abgehaengt - Zer0 selbst unveraendert (D6; 'zb ziel' und die Hologramme setzen seine Factory zurueck).
-  - Phase 4-6: alle 36 Skills in den Baeumen. 16 gemessen, 17 gebaut, 3 Platzhalter (Zweite Meinung,
-    Gemeinsame Rueckkehr, Schattenanker). Status je Skill: docs/skills.md, 8; im Modul: S_GEBAUT.
-  - Die Mechaniken, nach Abschnitten (im Modul danach suchen):
-      "Handgriff 2"          Ticker (PlayerTick, 1/s mit liegender Bombe): Stacks, Entfernung zum Anker
-      "Handgriff 3"          Kill-Zaehler (NotifyKilledEnemy): Wiederkehr, Kurs halten
-      "Handgriff 3b"         Deja-vu (pc.UpdateKillSkills)
-      "Handgriff 4, Paket A" am Zuenden: Umkreis-Treffer (_treffer: Schaden/Stoss/Stagger), Volle
-                             Rueckerstattung, Reinigung, Nachhall, Ruecksprung-Detonation, Zeitsprung
-      "Handgriff 4, Paket B" Schadens-Hook (WillowAIPawn:TakeDamage): Paradoxon, Vorbelastung, Zeitspur
-      "Handgriff 4, Paket C" Fight for your Life: Es war nie passiert; Kurs halten
-      "Handgriff 4, Paket D" selbst gespawnte Hologramme: Zeitkapsel, Nachbild, Sprengsatz
-  - Geparkt: Rueckstoss an Bodengegnern, Verlangsamung (beide: PHYS_NavMeshWalking, docs/spikes.md).
-  - Naechster Handgriff: plan.md, Wiedereinstieg ("Wenn der Nutzer 'lass uns weitermachen' sagt").
+Stand 2026-10-02 (v1.55): spielfertig und veroeffentlicht (GitHub, Nexus). Alle 36 Skills wirken,
+der Action Skill ist komplett, dazu eigenes Modell und Portrait (Pakete im Release, nicht im Repo).
+Wo es weitergeht: plan.md, "Wiedereinstieg" und "Fahrplan". Status je Skill: docs/skills.md, 8.
 
-Aufgabe: Seit D4 (2026-09-19) traegt dieses Modul BEIDES - Daten und Logik. Skills, Baeume, Texte
-und Zahlen entstehen als Laufzeit-Kopien; Hotfixes werden nicht mehr gebraucht, an Zer0s Objekten
-wird nichts geaendert. (src/hotfixes.txt und exec zeitbombe.txt sind damit Altlast.)
+Seit D4 (2026-09-19) traegt dieses Modul BEIDES - Daten und Logik. Skills, Baeume, Texte und Zahlen
+entstehen als Laufzeit-Kopien; an Zer0s Objekten wird nichts geaendert (D6). src/hotfixes.txt und
+exec zeitbombe.txt sind Altlast.
 
-Was das Modul heute tut:
-  1. Den 7. Vault Hunter anlegen (ensure_seventh_character, Spike C - funktioniert): beim Start
-     Laufzeit-Kopien von Zer0s Klasse/ClassId/Profil/NameId (gerootet), im Auswahlmenue die
-     DLC-Registrierung und die Kachel (_on_commit_characters). Anleitung: docs/kammerjaeger-hinzufuegen.md
-  2. Die eigene Baumkette anlegen (ensure_skilltree - im Spiel bestaetigt 2026-09-20): Wurzelobjekt,
-     Wurzelast und die drei Aeste VERGANGENHEIT / RUECKKEHR / AUSFLUG als Kopien, SkillTreePath der
-     eigenen Klasse darauf. Entsteht beim Modulstart, vor jedem Spielstand. Voraussetzung ist der
-     richtige Paketname: load_package("GD_Assassin_Streaming_SF") bringt Zer0s Vorlagen, das
-     naheliegende "GD_Assassin_Skills" nicht.
-  2b. Die 36 Skills in die Aeste haengen (_baeume_fuellen, Abschnitt "Phase 4-6"): je Skill eine
-     Kopie eines Zer0-Skills mit eigenem Namen/Text/Effekten/Praesentationen, dazu bei HS-Skills
-     ein versteckter Effekt-Skill <Name>_Wirkung, den das Modul mit dem Rang des Spielers schaltet
-     (mechanik_gelegt / mechanik_gezuendet / mechanik_verpufft, fenster_anpassen). Eigenes Layout
-     Layout_Chronomaster (12 Zellen; Zer0 hat 10).
-  3. Den Action Skill tragen (Phase 3, alle Schritte im Spiel bestaetigt):
-       - ensure_action_skill: eigene Kopien Skill_Zeitbombe / ActionSkill_Zeitbombe (Name, Text,
-         Fenster 20 s, Nahkampf-Dash aus, Vision Mode leer) im Tiers(0) des Wurzelastes
-       - ensure_cooldown_pool: eigene Pool-Kopie mit 35 s an der eigenen Klasse
-       - drei Hooks: Skilltaste -> legen(), zweiter Druck -> zuenden() + ResetActionSkill +
-         StartActiveSkillCooldown, Ablauf -> verpuffen() mit halbem Cooldown
-       - ein vierter Hook blockiert Zer0s Skill_Stealth (Unsichtbarkeit) und seit v0.63 den
-         Schadensstack Skill_ActionSkillDamageBuffStack, den Skill_Deceptions BPD im Loop anwirft
-       - ein fuenfter Hook blockiert Zer0s Klang: Wwise-State "ActionSkill_On" (Daempfer - im Spiel
-         bestaetigt v0.49) sowie "Start"/"Loop" (Ambiente, bestaetigt v0.50)
-     Alles gegattert durch ist_chronomaster - Zer0s Decepti0n bleibt, was sie ist.
-     Schritt 5 (bestaetigt v0.47): bombe_setzen spawnt am Anker ein DynamicSMActor_Spawnable per
-     pc.Spawn + SetStaticMesh (Caesium-Ladung, gerootet), bombe_weg raeumt es beim Zuenden/Verpuffen ab.
-  4. Skills schalten (Spike E - gemessen): skill_an / skill_aus / skill_grad / skill_aktiv /
-     skills_aus_alle. Darauf stehen die HS-Skills (wirkung_an / wirkung_aus).
-  5. kopie() ist der Prototyp aus Spike D (eigene Skill-Kopie, Wert aendern, messen) - durch
-     _skill_bauen abgeloest, bleibt als kleinster Beweis stehen.
+Aufbau - im Modul nach diesen Ueberschriften suchen:
+  "Legen / Zuenden"                 Zustand, Anker, Teleport und Werte (legen, zuenden, verpuffen)
+  "die Bombe am Anker (D9)"         Caesium-Ladung als DynamicSMActor, ohne Kollision
+  "Die Bombe werfen"                unsichtbare Granate per Behavior_SpawnProjectile, Bombe folgt (WURF_*)
+  "Phase 3, Schritt 1"              Verdrahtung: Skilltaste -> legen/zuenden, Ablauf -> verpuffen
+  "Schattenanker"                   Capstone Baum 2: Ringpuffer, Taste halten (WillowUIInteraction:InputKey)
+  "Spike C: Charakterliste"         der 7. Charakterslot (ensure_seventh_character), Kachel, Portrait (img://)
+  "Die eigene Baumkette"            Wurzel + drei Aeste als Kopien (ensure_skilltree)
+  "Phase 4-6"                       die 36 Skills: Tabellen BAUM_*, Bauarten H / KILL / HS / S / KS,
+                                    SKILL_ICONS, HUD_SLOT; _baeume_fuellen
+  "Schadensimmunitaet"              Reinigung / Zeitsprung ueber versteckte Effekt-Skills
+  "Handgriff 2"                     Ticker (PlayerTick, 1/s mit liegender Bombe): Gespannte Zeit
+  "Handgriff 3" / "Kill-Stacks"     Kill-Zaehler (NotifyKilledEnemy), Haste Stacks mit HUD-Zahl,
+                                    Dauerfeuer, Echo Bullet / Dimensional Loop (Zusatzschuss), Time Loop
+  "Handgriff 4, Paket A"            am Zuenden: Umkreis-Treffer (_treffer), Volle Rueckerstattung,
+                                    Reinigung, Nachhall, Zeitsprung; Refill, Infinite, Borrowed Health
+  "Handgriff 4, Paket B"            Schadens-Hooks: Paradoxon (WillowAIPawn:TakeDamage), Return to
+                                    Sender (WillowPlayerPawn:TakeDamage); Zeitspur ist der Zeitwirbel
+  "Handgriff 4, Paket C"            Fight for your Life: Es war nie passiert; Kurs halten
+  "Handgriff 4, Paket D"            Hologramme: Zeitkapsel, Nachbild; "Sprengsatz, neu"
+  "Handgriff 4, Paket E"            Verbuendete: Zeitkapsel-Heilung
+  "Phase 8, Teil 1"                 sichtbare Effekte (Behavior_Explode ueber ruhende Projektile)
+  "Phase 3, Schritt 4" / "5b"       Zer0s Unsichtbarkeit, Schadensstack und Klang abhaengen (Hooks)
+  "Skills schalten"                 skill_an / skill_aus / skill_grad (Spike E)
+  "Aussehen"                        eigenes Modell NUR am Chronomaster: Schnellscan ueber PawnList,
+                                    gemerkte Pfade, Vollscan selten (v1.54, find_all kostet ~9 ms)
+  zb fps / zb icons                 Messwerkzeuge (Frame-Zeiten, Icon-Katalog)
 
-Konsole (alles landet in Binaries/Win32/Plugins/unrealsdk.log, Praefix [ZB]):
-  zb status                 Zustand (Karte, Pawn, Klasse, bereit/gelegt, Anker)
-  zb legen                  Anker von Hand setzen (der Skill tut das sonst selbst)
-  zb zuenden                Anker wiederherstellen (Teleport + Werte); Anker bleibt fuer Wiederholung
-  zb ende [2|1|3]           laufenden Skill beenden (Standard 2 = ResetActionSkill, wirkt)
-  zb loeschen               Anker verwerfen, Zustand zurueck auf bereit
-  zb bombe [MESH] [SCALE]   Bombenobjekt am eigenen Standort spawnen (Standard: BOMB_MESH, 1.0) -
-                            zum Ausprobieren anderer Meshes. 'zb bombe weg [1|2|3]' entfernt es,
-                            'zb bombe diag' zeigt Kollisionsflags und alle Bomben-Actors im Level,
-                            'zb bombe koll 1|2|3' probiert Kollisions-Abschaltungen (1 ist belegt).
-  zb attr [NAME|PFAD] [pawn|weapon|pc]  Attributwert ablesen (Standard WeaponDamage an der Waffe).
-                            Kurznamen: WeaponDamage, FootSpeed, krit, magazin, feuerrate.
-  zb rang [NAME]            Punkte des Spielers in einem Baum-Skill.
-  zb wirkung an|aus NAME [GRAD]   Effekt-Skill eines HS-Skills von Hand schalten.
-  zb meshes [FILTER]        geladene StaticMeshes ins Log (nur die kommen fuer die Bombe in Frage -
-                            Prop_*/FX_*-Pakete gibt es nicht als .upk, load_package taete nichts)
-  zb props pawn|pc|weapon FILTER   Eigenschaften eines Objekts ins Log (Diagnose, Namen finden)
-  zb funcs KLASSE [FILTER]  Funktionen einer Klasse MIT Elternklassen ins Log. Immer zuerst, bevor
-                            ein Funktionsname geraten wird (GetSkillGrade sass am Controller, v0.54).
-                            Enum-Parameter zeigen seit v0.68 ihren Enum-Namen (ByteProperty:ENUM).
-  zb enum [FILTER]          Enums samt Werten ins Log (Standard: alles mit "skill" im Namen). Die
-                            Werte stehen in keinem Dump, nur im Speicher - so kam SEVT_KilledEnemy=11.
-  zb dejavu                 Das Kill-Ereignis von Hand melden (Deja-vu), mit an/aus der Kill-Skills
-                            vor und nach dem Melden - ohne den Skillzyklus zu durchlaufen.
-  zb spur                 Skill-Ereignisse loggen an/aus (Standard aus) - auch jede Skill-
-                            Aktivierung durch BPDs und jeden Kill (NotifyKilledEnemy).
-  zb skill an|aus|grad N|stack N|status [PFAD]
-                            Skill schalten und das Attribut seines ERSTEN Effekts messen (Weapon.*
-                            an der Waffe, sonst am Pawn). Standard: Innervate (+7 % FootSpeed je Rang).
-                            'stack N' = an + Raenge 2..N + aus, alles in einem Befehl.
-  zb kopie                  Prototyp: eigene Skill-Kopie anlegen, Wert aendern, Wirkung messen
-  zb baum                   Diagnose: die eigene Baumkette ins Log (alle Tiers mit Skill[Rang/Max]);
-                            fehlt sie, wird ein Anlauf nachgeholt. Angelegt wird sie beim Modulstart.
-  zb rang [NAME]            Punkte des Spielers in einem (oder allen) Baum-Skills - prueft GetSkillGrade
-  zb wirkung an|aus NAME [GRAD]   Effekt-Skill eines HS-Skills von Hand schalten (z. B. Stabilisator)
-  zb pakete                 Diagnose: welcher Paketname bringt Zer0s Skill-/Baumobjekte in den
-                            Speicher? Im HAUPTMENUE ausfuehren - dort entscheidet sich die Frage.
-  zb askill                 Diagnose: Objekte am Action Skill (Tiers(0), Skill_Deception,
-                            ActionSkill_Deception) und der Cooldown-Pool. Hat in Schritt 2/3 die
-                            Klassennamen und die Cooldown-API geliefert; bleibt als Nachschlagewerk.
-                            Mit GELADENEM Chronomaster ausfuehren.
-
+Konsole: "zb" ohne Argument listet alle Befehle (alles landet in Binaries/Win32/Plugins/unrealsdk.log,
+Praefix [ZB]). Die Werkzeuge mit Zweck stehen in plan.md, "Werkzeuge". Am haeufigsten gebraucht:
+  zb status | zb spur | zb funcs KLASSE [FILTER] | zb enum [FILTER] | zb attr [NAME] [pawn|weapon|pc]
+  zb skin [an|aus|mat ...] | zb fps [SEKUNDEN] | zb effekte test | zb baum
 Testhilfen - aendern den Spielstand DAUERHAFT, laufen nur auf dem Chronomaster (testchar_only):
-  zb xp [N]                 N Erfahrungspunkte gutschreiben (Standard 1000, hoechstens 2 Mio)
-                            KEIN "bis Stufe N" - warum nicht, steht bei xp()
-  zb respec                 Skillpunkte kostenlos zuruecksetzen
-  zb cash [N]               Geld gutschreiben (Standard 1 Mio)
+  zb xp [N] | zb respec | zb cash [N] | zb fasttot
 
-Regeln (aus Abstuerzen und Fehlversuchen, Details docs/spikes.md):
-  - Laufzeit-Objekte (construct_object) immer rooten (_root), sonst holt sie die GC.
-  - Nie Referenzen auf Menue-Objekte cachen - bei jedem Aufruf frisch suchen (Absturz 18:41).
-  - pc.GetCachedSaveGame() ist eine Kopie; Schreiben darauf ist wirkungslos.
-  - Nach Aenderungen an Hooks das Spiel neu starten, "rlm" laesst alte Hooks weiterlaufen.
-  - Vor jedem Hook das Paket der Klasse im Dump nachlesen ("Class=" -Zeile): Behavior_PostAkEvent
-    liegt in GearboxFramework, Behavior_ActivateSkill in WillowGame. add_hook prueft nichts -
-    ein falscher Name heisst nur: der Hook feuert nie (v0.48).
-  - Funktionsnamen nie aus der Erinnerung: 'zb funcs KLASSE' fragen (v0.53: PlayerSkillTree hat
-    kein GetSkillGrade, der Controller schon).
-  - Struct-Arrays (SkillEffectDefinitions) lassen sich per SDK elementweise beschreiben und
-    kuerzen; Verlaengern ist unbelegt - Vorlage nach Effektzahl waehlen.
-  - Prop_*/FX_*-Pakete gibt es nicht als .upk; nur geladene Meshes sind erreichbar ('zb meshes'),
-    beim ersten Fund rooten, dann ueberleben sie den Kartenwechsel.
-  - Im Fahrzeug ist pc.Pawn das Fahrzeug -> Legen/Zuenden blockiert.
-  - Muster aus ../borderlands 2 mod/sdk/fl4k_pet: SetLocation lehnt ab -> Location direkt schreiben,
-    dann PHYS_Falling (2). Actor.Destroy greift nicht -> Died(). bIsCriticalActor friert KI ein.
+Die Regeln aus Abstuerzen und Fehlmessungen stehen in CLAUDE.md ("Technische Regeln"), die bewiesene
+Technik mit Belegen in docs/spikes.md. Die wichtigsten fuer dieses Modul:
+  - Laufzeit-Objekte (construct_object) sofort rooten (_root), sonst holt sie die GC.
+  - Nie UObject-Huellen ueber Frames merken (Menue-Objekte, Materialien) - Pfade merken, frisch suchen.
+  - An fremden Objekten erst Pfad pruefen, dann Eigenschaften, Funktionen zuletzt (_ist_welt_actor).
+  - Struct-Arrays nur elementweise beschreiben; nie per Zuweisung kuerzen oder verlaengern.
+  - Funktionsnamen nie raten ('zb funcs'), Hook-Pakete im Dump nachlesen ("Class="-Zeile).
+  - Nach Hook-Aenderungen das Spiel neu starten - "rlm" laesst alte Hooks weiterlaufen.
+  - find_all nie in haeufigen Ticks (geht immer die ganze Objektliste durch).
 """
 
 import math
+import random
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -133,7 +66,7 @@ from mods_base import ENGINE, Game, build_mod, command
 from unrealsdk import logging
 from unrealsdk.unreal import UObject, WeakPointer
 
-__version__ = "1.54"
+__version__ = "1.73"
 __author__ = "zombierrr"
 
 # Der Charaktername ist ein Platzhalter (plan.md, Anhang A). Seit D4 ist DIESE Konstante die einzige
@@ -256,6 +189,10 @@ def legen() -> None:
     bombe = bombe_setzen(pawn, wurf=True)
     if bombe is None or not wurf_starten(pc, pawn, bombe):
         effekt("Legen", FX_LEGEN, _vec(loc.X, loc.Y, loc.Z), 400.0)   # Phase 8 (v1.00)
+        try:
+            mechanik_zeitstillstand(loc.X, loc.Y, loc.Z)   # v1.71 Time Freeze: ohne Flug am Wurfpunkt
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Time Freeze: {ex}")
 
 
 def zuenden() -> None:
@@ -275,19 +212,18 @@ def zuenden() -> None:
         return
     a = _anchor
     # Wo wir JETZT stehen - der Absprungpunkt. Nach dem Teleport ist er nicht mehr zu haben, und
-    # drei Skills aus Paket A brauchen ihn (Ruecksprung-Detonation, Zeitsprung, Nachbild).
+    # Zeitsprung und Nachbild brauchen ihn.
     global _absprung
     _absprung = _vec(pawn.Location.X, pawn.Location.Y, pawn.Location.Z)
-    # Sprengsatz (v0.94) explodiert am Spieler, Rueckenwind (v0.97) misst die Entfernung zum Anker -
-    # beides geht nur hier, solange er noch am Absprungpunkt steht.
+    try:
+        endspurt_messen(pc)   # v1.69 Crunch Time: Restzeit VOR ResetActionSkill, der Faktor gilt fuer Sprengsatz und Nachhall
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Crunch Time: {ex}")
+    # Sprengsatz (v0.94) explodiert am Spieler - das geht nur hier, solange er noch am Absprungpunkt steht.
     try:
         mechanik_sprengsatz(pawn)
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Sprengsatz: {ex}")
-    try:
-        mechanik_ruecksprung_detonation(pawn, _vec(a.x, a.y, a.z))
-    except Exception as ex:  # noqa: BLE001
-        logging.error(f"[ZB] Ruecksprung-Detonation: {ex}")
     # Phase 8 (v1.00): Nova am Absprungpunkt - blau beim Zuenden, violett bei der Schattenzuendung.
     try:
         effekt("Absprung", FX_SCHATTEN if _schatten_laeuft else FX_ABSPRUNG, _absprung, 1000.0)
@@ -423,6 +359,10 @@ def bombe_setzen(pawn: UObject, mesh_pfad: str = BOMB_MESH, scale: float = BOMB_
 
 def bombe_weg(grund: str, art: int = 1) -> None:
     global _wurf
+    try:
+        frieren_aus(f"Bombe weg: {grund}")   # v1.71 Time Freeze: gefroren bis die Bombe weg ist
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Time Freeze: auftauen: {ex}")
     if _wurf is not None:
         # Gezuendet oder verpufft, bevor sie lag: der Anker bleibt der Wurfpunkt (v1.19).
         logging.info(f"[ZB] Wurf abgebrochen ({grund}) nach {_wurf.zeit:.2f} s - Anker bleibt am Wurfpunkt")
@@ -922,47 +862,6 @@ def _spaeher_tick(dt: float) -> None:
             logging.info(f"[ZB] Spaeher +0,3s {p.Name}: {_spaeher_felder(p)}")
 
 
-def trace_diag() -> None:
-    """zb trace - v1.22: senkrecht 50 m nach unten, fuenf Varianten, alles ins Log.
-
-    Ergebnis (v1.22/v1.23, gemessen): KEINE Variante taugt. Trace liefert Actor None und die
-    Platzhalter (0,0,0); FastTrace liefert immer False, auch fuer einen 2-cm-Schritt in freier Luft.
-    Bleibt als Werkzeug stehen, falls ein anderer Aufrufweg auftaucht."""
-    pc = local_pc()
-    pawn = pc.Pawn if pc else None
-    if pawn is None:
-        logging.error("[ZB] trace: kein Spieler-Pawn")
-        return
-    start = _augen(pawn)
-    ende = _vec(start.X, start.Y, start.Z - 5000.0)
-    logging.info(f"[ZB] trace: von ({start.X:.0f},{start.Y:.0f},{start.Z:.0f}) nach unten; Fuesse bei Z"
-                 f" {pawn.Location.Z - float(pawn.CylinderComponent.CollisionHeight):.0f}")
-
-    def fmt(v: Any) -> str:
-        try:
-            return f"({v.X:.0f},{v.Y:.0f},{v.Z:.2f})"
-        except Exception:  # noqa: BLE001
-            return repr(v)
-
-    def probe(label: str, fn: Any) -> None:
-        try:
-            r = fn()
-            if isinstance(r, tuple):
-                teile = [fmt(t) if hasattr(t, "X") else (t._path_name() if hasattr(t, "_path_name") else repr(t)) for t in r[:3]]
-                logging.info(f"[ZB] trace {label}: Actor={teile[0]} HitLocation={teile[1]} HitNormal={teile[2]}")
-            else:
-                logging.info(f"[ZB] trace {label}: {r!r}")
-        except Exception as ex:  # noqa: BLE001
-            logging.error(f"[ZB] trace {label}: FEHLER {ex}")
-
-    null = lambda: _vec(0, 0, 0)  # noqa: E731
-    probe("1 pawn, nur Welt", lambda: pawn.Trace(HitLocation=null(), HitNormal=null(), TraceEnd=ende, TraceStart=start, bTraceActors=False))
-    probe("2 pawn, mit Actors", lambda: pawn.Trace(HitLocation=null(), HitNormal=null(), TraceEnd=ende, TraceStart=start, bTraceActors=True))
-    probe("3 pc, mit Actors", lambda: pc.Trace(HitLocation=null(), HitNormal=null(), TraceEnd=ende, TraceStart=start, bTraceActors=True))
-    probe("4 pawn, positionell", lambda: pawn.Trace(null(), null(), ende, start, True))
-    probe("5 FastTrace (True = frei)", lambda: pawn.FastTrace(TraceEnd=ende, TraceStart=start))
-
-
 def _wurf_notlandung(pc: UObject) -> None:
     """Flug gescheitert oder ohne Halt: Bombe an die Fuesse des Wurfpunkts, Anker bleibt dort
     (v1.19/v1.20 hing sie zweimal in Augenhoehe)."""
@@ -1009,6 +908,10 @@ def _wurf_landen(pc: UObject, pawn: UObject, actor: UObject, x: float, y: float,
     logging.info(f"[ZB] Wurf: gelandet ({grund}) nach {zeit:.2f} s bei ({x:.0f},{y:.0f},{z:.0f}),"
                  f" {math.hypot(ax - wx, ay - wy) / UU_JE_METER:.1f} m vom Wurfpunkt; Anker ({ax:.0f},{ay:.0f},{az:.0f})")
     effekt("Legen", FX_LEGEN, _vec(x, y, z), 400.0)
+    try:
+        mechanik_zeitstillstand(x, y, z)   # v1.71 Time Freeze: am Landepunkt
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Time Freeze: {ex}")
     try:
         mechanik_zeitkapsel_gelegt(_vec(ax, ay, az))   # Hologramm erst am Landepunkt
     except Exception as ex:  # noqa: BLE001
@@ -1101,7 +1004,7 @@ def namen_sammeln() -> None:
 
     Ein Testlauf statt siebzehn. Jede Zeile ist eine Frage aus docs/skills.md: Munition (Volle
     Rueckerstattung), Statuseffekte und Unverwundbarkeit (Reinigung, Zeitsprung), FFYL (Es war nie
-    passiert), Schaden/Stagger an Gegnern (Nachhall, Ruecksprung-Detonation, Zeitsprung, Paradoxon),
+    passiert), Schaden/Stagger an Gegnern (Nachhall, Zeitsprung, Paradoxon),
     Tempo an Gegnern (Zeitspur) und die laufende Skilldauer (Kurs halten).
 
     Gegner finden ist schon belegt: unrealsdk.find_all("WillowAIPawn", exact=False) - das Muster
@@ -1123,7 +1026,7 @@ def namen_sammeln() -> None:
         ("WillowAIPawn", "Knock", "Nachhall (Rueckstoss)"),
         ("WillowAIPawn", "Status", "Zeitspur (Markierung)"),
         ("WillowAIPawn", "Velocity", "Nachhall (Rueckstoss)"),
-        ("Actor", "HurtRadius", "Ruecksprung-Detonation, Sprengsatz"),
+        ("Actor", "HurtRadius", "Sprengsatz"),
         ("ExecuteActionSkill", "Duration", "Kurs halten"),
         ("ExecuteActionSkill", "Time", "Kurs halten"),
         ("SkillEffectManager", "GetActive", "Kurs halten (laufende Instanz)"),
@@ -1879,7 +1782,7 @@ SKILL_TEXT = (
 BRANCHES = [
     ("Vergangenheit", "Branch_Sniping", "HINDSIGHT"),
     ("Rueckkehr", "Branch_Cunning", "REWIND"),
-    ("Ausflug", "Branch_Bloodshed", "DETOUR"),
+    ("Ausflug", "Branch_Bloodshed", "OVERCLOCK"),   # v1.56, bis v1.55 DETOUR
 ]
 
 # Das Paket, das Zer0s Baum-Vorlagen mitbringt. Gemessen (Test 2026-09-20, 11:03, Log):
@@ -2069,7 +1972,7 @@ def ensure_cooldown_pool(class_def: UObject) -> bool:
 #
 # Vorlagen nach Effektzahl, weil Struct-Arrays per SDK nur GEKUERZT werden (Spike D: Element
 # beschreiben und ganzes Array setzen sind belegt, Anhaengen nicht): Headsh0t 1, FastHands 2,
-# Precisi0n 4 Effekte. Deshalb deckt "Stabilisator" vier statt fuenf Schadensquellen ab.
+# Precisi0n 4 Effekte.
 # ---------------------------------------------------------------------------
 
 # Attribute (alle in docs/skills.md, Abschnitt 2, am Datenpaket verifiziert)
@@ -2080,11 +1983,12 @@ A_FEUERRATE = "D_Attributes.Weapon.WeaponFireInterval"          # negativ = schn
 A_NACHLADEN = "D_Attributes.Weapon.WeaponReloadSpeed"           # negativ = schneller
 A_TEMPO = "D_Attributes.GameplayAttributes.FootSpeed"
 A_ZOOM = "D_Attributes.Weapon.WeaponZoomEndFOV"                  # negativ = schneller
-A_STREUUNG = "D_Attributes.Weapon.WeaponSpread"                  # negativ = genauer
-A_PROJEKTIL = "D_Attributes.Weapon.WeaponProjectileSpeedMultiplier"
 A_HINTERHALT = "D_Attributes.DamageEnhancementModifiers.PlayerAttackUnsuspectingTargetModifier"
 A_COOLDOWN = "D_Attributes.ActiveSkillCooldownResource.ActiveSkillCooldownConsumptionRate"
-A_SCHILDREGEN = "D_Attributes.ShieldResourcePool.ShieldPassiveRegenerationRate"
+# v1.61b: "Shield Recharge Rate" im Sinne des Spiels (Badass-Rang, GD_Challenges.BadassSkill, MT_Scale).
+# NICHT ShieldPassiveRegenerationRate - das ist die Dauerregeneration, ohne passendes Schild 0, ein Scale
+# darauf bleibt 0 (gemessen v1.61: 0.0 bei 16 Stacks; Standby nutzte es bis v1.62).
+A_SCHILDLADEN = "D_Attributes.ShieldResourcePool.ShieldOnIdleRegenerationRate"
 A_RESIST = (
     "D_Attributes.DamageSourceModifiers.ReceivedBulletDamageModifier",
     "D_Attributes.DamageSourceModifiers.ReceivedMeleeDamageModifier",
@@ -2125,84 +2029,120 @@ def _S(*a, **k) -> Skill:  # noqa: N802 - kurz, damit die Tabelle lesbar bleibt
     return Skill(*a, **k)
 
 
+# v1.67: orange Werte unter dem Kartentext (Feedback I11/F2) auch fuer Skills ohne eigenen Attribut-Effekt
+# (S, HS, KS). Rezept aus dem Original, Dump: Zer0s Decepti0n traegt Effekte mit EffectTarget=TARGET_None -
+# sie wirken auf niemanden, liefern aber die Zahl fuer die Praesentation ("Melee Damage: up to +150%").
+# Der Baum-Skill bekommt je Zeile so einen Anzeige-Effekt auf ein Traeger-Attribut plus eine Praesentation;
+# das Spiel zeigt Wert und Vorschau auf den naechsten Rang. Wert bei Grad g = basis + je_grad x (g - 1).
+@dataclass(frozen=True)
+class Zeile:
+    text: str             # Praesentation; $NUMBER$ ist die Zahl
+    basis: float          # Wert bei Rang 1
+    je_grad: float        # Zuwachs je weiterem Rang
+    prozent: bool = True
+    dezimal: bool = False
+    plus: bool = True     # Vorzeichen zeigen
+
+
+def _Z(text: str, je_rang: float, **k) -> Zeile:  # noqa: N802 - linear je Rang (der Normalfall)
+    return Zeile(text, je_rang, je_rang, **k)
+
+
+ANZEIGE: dict[str, tuple] = {
+    # Hindsight
+    "Nachwirkung": (_Z("Weapon Damage: $NUMBER$", 0.04),),
+    "GespannteZeit": (_Z("Weapon Damage per stack: $NUMBER$", 0.01),),
+    "Eile": (_Z("Fire Rate, Reload Speed and Shield Recharge per stack: $NUMBER$", 0.003, dezimal=True),),
+    "Paradoxon": (_Z("Damage dealt again: $NUMBER$", 0.10),),
+    "Zuruecksenden": (_Z("Damage sent back: $NUMBER$", 0.25),),
+    "Wiederkehr": (_Z("Weapon Damage per kill: $NUMBER$", 0.02),),
+    "Langzeitgedaechtnis": (_Z("Bomb Window: $NUMBER$ seconds", 2.0, prozent=False),
+                            _Z("Critical Hit Damage: $NUMBER$", 0.04)),
+    # Rewind
+    "Auffrischung": (_Z("Health and Shield restored: $NUMBER$", 0.04),),
+    "VolleRueckerstattung": (_Z("Ammo refunded: $NUMBER$", 0.20, plus=False),),
+    "GeliehenesLeben": (_Z("Health restored: $NUMBER$", 0.12),),
+    "SichereKrits": (_Z("Duration: $NUMBER$ seconds", 1.0, prozent=False, plus=False),),
+    "Zeitkapsel": (_Z("Ally Health Regeneration: $NUMBER$ per second", 0.008, dezimal=True),),
+    "Nachbild": (Zeile("Duration: $NUMBER$ seconds", 3.0, 1.0, prozent=False, plus=False),),
+    # Overclock
+    "Nachfuellen": (_Z("Magazine refilled per kill: $NUMBER$", 0.05, plus=False),),
+    "Dimensionsschleife": (_Z("Double shots after reload: $NUMBER$", 1.0, prozent=False, plus=False),),
+    "GranatenRueckruf": (_Z("Chance: $NUMBER$", 0.06, plus=False),),
+    "Echokugel": (Zeile("Echo every $NUMBER$ shots", 10.0, -1.25, prozent=False, plus=False),),
+    "KursHalten": (_Z("Window per kill: $NUMBER$ seconds", 1.0, prozent=False),),
+}
+
+
 # v1.14/v1.18: HUD-Plaetze der Stack-Skills unter der XP-Leiste (Zer0 nutzt 2 und 3 - er ist hier nicht
 # Wirt; Axton nutzt Plaetze bis 9, also gibt es mindestens so viele)
-HUD_SLOT = {"DejaVu": 1, "Wiederholung": 2, "Vorstoss": 3, "GespannteZeit": 4, "Wiederkehr": 5, "Abstand": 6}
+HUD_SLOT = {"Eile": 1, "Echokugel": 2, "Dimensionsschleife": 3, "GespannteZeit": 4, "Wiederkehr": 5, "Zeitschleife": 6}   # v1.61 Haste 1, v1.63b Echo 2, v1.64 Loop 3, v1.65 Time Loop 6
 KS_TRACK_VORBILD = "GD_Assassin_Skills.Sniping.KillConfirmed_Stack"   # TRACKEDSKILL_Respond (Dump)
-# v1.13: gemeinsamer Satz der drei Kill Skills (ein Stack-Zaehler fuer alle, s. "Kill-Stacks")
-KILLSTACK_TEXT = "Each kill grants a stack, with no limit (shared by all Kill Skills); starting 3 seconds after your last kill, one stack decays every second."
 
 # Die Tabellen. Reihenfolge = Tier 1..6, innen links nach rechts. Werte aus docs/skills.md, 5.
 BAUM_VERGANGENHEIT = [
     [_S("Gedaechtnis", "Memory", "Increases [skill]Critical Hit Damage[-skill] and [skill]Magazine Size[-skill].", 5, "H",
         (Effekt(A_KRIT, 0.04, "Critical Hit Damage: $NUMBER$"), Effekt(A_MAGAZIN, 0.05, "Magazine Size: $NUMBER$"))),
-     _S("Nachwirkung", "Aftermath", "After you [skill]detonate[-skill], gain more [skill]Weapon Damage[-skill] for 8 seconds: +4% per rank.", 5, "HS",
+     _S("Nachwirkung", "Aftermath", "After you [skill]detonate[-skill], gain [skill]Weapon Damage[-skill] for 8 seconds.", 5, "HS",
         (Effekt(A_SCHADEN, 0.04, "Weapon Damage: $NUMBER$"),), dauer=8.0)],
-    [_S("GespannteZeit", "Tension", "While the bomb is out, gain a stack every second (max 10). Each stack: +1% [skill]Weapon Damage[-skill] per rank.", 5, "HS",
+    [_S("GespannteZeit", "Tension", "While the bomb is out, gain a stack of [skill]Weapon Damage[-skill] every second, up to 10.", 5, "HS",
         (Effekt(A_SCHADEN, 0.01, "Weapon Damage: $NUMBER$"),)),
-     # v1.13 (Nutzerwunsch): die drei Kill Skills stapeln unbegrenzt - Bauart HS, das Modul setzt
-     # Grad = Rang x Kill-Stacks (s. "Kill-Stacks"). Negative Scale-Summen teilen (v0.99), also waechst
-     # das TEMPO linear: 100 Stacks x R5 x 0,002 = Summe -1,0 = doppeltes Tempo.
-     _S("DejaVu", "Deja Vu", "[skill]Kill Skill[-skill]. " + KILLSTACK_TEXT + " +0.2% [skill]Fire Rate[-skill] and [skill]Reload Speed[-skill] per stack and rank. Detonating holds your stacks: the decay starts over.", 5, "KS",
-        (Effekt(A_FEUERRATE, -0.002, "Fire Rate: $NUMBER$"), Effekt(A_NACHLADEN, -0.002, "Reload Speed: $NUMBER$")))],
-    [_S("Vorbelastung", "Prior Record", "Enemies you hit while the bomb is out are marked: for 8 seconds after you detonate, they take +5% damage from you per rank.", 5, "S"),
-     _S("Wiederholung", "Encore", "[skill]Kill Skill[-skill]. " + KILLSTACK_TEXT + " +0.4% [skill]Critical Hit Damage[-skill] per stack and rank.", 5, "KS",
-        (Effekt(A_KRIT, 0.004, "Critical Hit Damage: $NUMBER$"),)),
+     # v1.56: ersetzt Deja Vu, Encore und Push Forward (docs/skills.md 9.2). v1.61: gebaut - Kill-Stack-
+     # Code (KILL_SKILLS) wieder angeschlossen, Dauerfeuer ueber den Feuer-Hook (_on_fire_ammunition).
+     _S("Eile", "Haste Stacks", "[skill]Kill Skill[-skill]. Each kill grants a stack of Haste, and every 2 seconds of sustained fire grants one too. Up to 20 stacks, at most 10 from sustained fire. Starting 3 seconds after your last stack, one stack decays every second.", 5, "KS",
+        (Effekt(A_FEUERRATE, -0.003, "Fire Rate: $NUMBER$", dezimal=True), Effekt(A_NACHLADEN, -0.003, "Reload Speed: $NUMBER$", dezimal=True),
+         Effekt(A_SCHILDLADEN, 0.003, "Shield Recharge Rate: $NUMBER$", dezimal=True)))],
+    [_S("Paradoxon", "Paradox", "When you detonate, the damage you dealt while the bomb was out hits the same enemies again.", 5, "S"),
+     _S("Zuruecksenden", "Return to Sender", "Damage you take while the bomb is out is stored. When you detonate, it strikes back at the enemies who dealt it.", 5, "S"),
      _S("Nachhall", "Reverberation", "Detonating releases a shockwave where you arrive: enemies within 6 meters take [skill]Shock Damage[-skill] equal to twice your grenade damage and are staggered.", 1, "S")],
-    [_S("Erinnerung", "Recollection", "The anchor saves your active Kill Skills and their stacks. When you detonate, they come back.", 1, "S"),
-     _S("Wiederkehr", "Recurrence", "After you detonate: for each kill you made while the bomb was out, +2% [skill]Weapon Damage[-skill] per rank for 10 seconds (max 10).", 5, "HS",
+    [_S("Erinnerung", "Recollection", "The anchor saves your Haste Stacks. If you have fewer when you detonate, they come back.", 1, "S"),
+     _S("Wiederkehr", "Recurrence", "After you [skill]detonate[-skill], gain [skill]Weapon Damage[-skill] for 10 seconds for each kill you made while the bomb was out (up to 10).", 5, "HS",
         (Effekt(A_SCHADEN, 0.02, "Weapon Damage: $NUMBER$"),), dauer=10.0)],
-    [_S("Langzeitgedaechtnis", "Long-Term Memory", "The Time Bomb window lasts 2 seconds longer per rank, and while the bomb is out you gain +4% [skill]Critical Hit Damage[-skill] per rank.", 5, "HS",
+    [_S("Langzeitgedaechtnis", "Long-Term Memory", "The Time Bomb window lasts longer, and while the bomb is out you gain [skill]Critical Hit Damage[-skill].", 5, "HS",
         (Effekt(A_KRIT, 0.04, "Critical Hit Damage: $NUMBER$"),)),
      _S("Zeitspur", "Time Vortex", "While the bomb is out, a time vortex erupts at the anchor every 2 seconds if enemies are within 8 meters: [skill]Shock Damage[-skill] equal to your grenade damage.", 1, "S")],
-    [_S("Paradoxon", "Paradox", "When you detonate, all damage you dealt while the bomb was out hits the same enemies again - at half strength.", 1, "S")],
+    [_S("Zeitstillstand", "Time Freeze", "Throwing the bomb freezes all enemies within 25 meters of where it lands, bosses included. A frozen enemy thaws when hit, and that first hit deals double damage. The rest stay frozen until the bomb is gone.", 1, "S")],
 ]
 
 BAUM_RUECKKEHR = [
-    [_S("Auffrischung", "Refresh", "Detonating also restores [skill]Health[-skill] and [skill]Shield[-skill]: +4% of maximum per rank, beyond the anchor values.", 5, "HS"),
+    [_S("Auffrischung", "Refresh", "[skill]Detonating[-skill] also restores [skill]Health[-skill] and [skill]Shield[-skill], beyond the anchor values.", 5, "HS"),
      _S("Bereitschaft", "Standby", "Increases [skill]Cooldown Rate[-skill] and [skill]Shield Recharge Rate[-skill].", 5, "H",
-        (Effekt(A_COOLDOWN, 0.02, "Cooldown Rate: $NUMBER$"), Effekt(A_SCHILDREGEN, 0.015, "Shield Recharge Rate: $NUMBER$", dezimal=True)))],
-    [_S("VolleRueckerstattung", "Full Refund", "Detonating refunds 20% per rank of the ammo reserve you have used since throwing the bomb.", 5, "S"),
-     _S("Stabilisator", "Stabilizer", "While the bomb is out, you take 2% less damage per rank from bullets, melee, grenades and rockets.", 5, "HS",
-        tuple(Effekt(a, -0.02, "Damage Resistance: $NUMBER$") for a in A_RESIST))],
+        (Effekt(A_COOLDOWN, 0.02, "Cooldown Rate: $NUMBER$"), Effekt(A_SCHILDLADEN, 0.015, "Shield Recharge Rate: $NUMBER$", dezimal=True)))],
+    [_S("VolleRueckerstattung", "Full Refund", "[skill]Detonating[-skill] refunds the ammo reserve you have used since throwing the bomb.", 5, "S"),
+     _S("GeliehenesLeben", "Borrowed Health", "[skill]Detonating[-skill] instantly restores [skill]Health[-skill]. Over the next 15 seconds you pay back 125% of it, but never below 1 health. Each kill in that time clears 25% of the debt.", 5, "S")],
     [_S("Reinigung", "Cleanse", "Detonating removes all status effects. 2 seconds of damage immunity after you arrive.", 1, "S"),
-     _S("ZweiteMeinung", "Second Opinion", "Allies near the anchor gain shield when you detonate: +6% of their maximum per rank.", 5, "S"),
-     _S("Zeitkapsel", "Time Capsule", "A hologram of you also appears at the anchor. It draws enemy fire and regenerates health for allies within 8 meters.", 5, "S")],
+     _S("SichereKrits", "Guaranteed Crits", "After you [skill]detonate[-skill], every hit is a [skill]Critical Hit[-skill] for a short time.", 5, "S"),
+     _S("Zeitkapsel", "Time Capsule", "A hologram of you also appears at the anchor. It draws enemy fire and regenerates [skill]Health[-skill] for allies within 8 meters.", 5, "S")],
     [_S("EsWarNiePassiert", "It Never Happened", "If you fall into Fight for Your Life while a bomb is out, it detonates on its own.", 1, "S"),
-     _S("Nachbild", "Afterimage", "When you detonate, an afterimage stays behind where you left and draws enemy fire: 2 seconds + 1 per rank.", 5, "S")],
+     _S("Nachbild", "Afterimage", "When you [skill]detonate[-skill], an afterimage stays behind where you left and draws enemy fire.", 5, "S")],
     [_S("Sprengsatz", "Parting Gift", "When you detonate, you leave a massive explosion behind - in your grenade's element, 5x your grenade damage.", 1, "S"),
-     _S("GemeinsameRueckkehr", "Homecoming", "Allies near where you arrive are healed: +5% of their maximum per rank.", 5, "S")],
+     _S("Endspurt", "Crunch Time", "The earlier you detonate, the stronger it gets: Reverberation and Parting Gift deal up to double damage, and the bomb itself explodes at the anchor.", 1, "S")],
     [_S("Schattenanker", "Shadow Anchor", "Even without a bomb out, the skill keeps remembering an anchor from 5 seconds ago. Hold the key for a shadow detonation (1.5x cooldown).", 1, "S")],
 ]
 
 BAUM_AUSFLUG = [
     [_S("Weite", "Open Road", "Increases [skill]Movement Speed[-skill] and [skill]Aim Speed[-skill].", 5, "H",
         (Effekt(A_TEMPO, 0.03, "Movement Speed: $NUMBER$"), Effekt(A_ZOOM, -0.02, "Aim Speed: $NUMBER$"))),
-     _S("Abstand", "Distance", "+2% [skill]Weapon Damage[-skill] per rank for every 10 meters between you and the anchor (max 5 stages).", 5, "HS",
-        (Effekt(A_SCHADEN, 0.02, "Weapon Damage: $NUMBER$"),))],
-    [_S("Vorstoss", "Push Forward", "[skill]Kill Skill[-skill]. " + KILLSTACK_TEXT + " +0.2% [skill]Movement Speed[-skill] and [skill]Reload Speed[-skill] per stack and rank.", 5, "KS",
-        (Effekt(A_TEMPO, 0.002, "Movement Speed: $NUMBER$"), Effekt(A_NACHLADEN, -0.002, "Reload Speed: $NUMBER$"))),
-     _S("SichererAbstand", "Safe Distance", "More than 15 meters from the anchor, you take 2% less damage per rank from bullets, melee, grenades and rockets.", 5, "HS",
-        tuple(Effekt(a, -0.02, "Damage Resistance: $NUMBER$") for a in A_RESIST))],
+     _S("Nachfuellen", "Refill", "Each kill refills part of your magazine, without using reserve ammo.", 5, "S")],
+    # v1.64: HS nur fuer die HUD-Zahl (verbleibende Doppelschuesse); der Effekt ist 0 und wirkt nicht.
+    [_S("Dimensionsschleife", "Dimensional Loop", "After every reload, your first shots fire twice. The counter next to your XP bar shows the double shots left.", 5, "HS",
+        (Effekt(A_SCHADEN, 0.0, ""),)),
+     _S("GranatenRueckruf", "Grenade Recall", "Each grenade you throw has a chance to come back to you.", 5, "S")],
     [_S("Ausbruch", "Breakout", "Throwing the bomb gives you +50% [skill]Movement Speed[-skill] for 3 seconds.", 1, "HS",
         (Effekt(A_TEMPO, 0.50, "Movement Speed: $NUMBER$"),), dauer=3.0),
      _S("Hinterhalt", "Ambush", "Increases damage against enemies that are not targeting you.", 5, "H",
         (Effekt(A_HINTERHALT, 0.04, "Damage vs. Unaware Enemies: $NUMBER$"),)),
-     _S("Weitschuss", "Long Shot", "Increases [skill]Accuracy[-skill] and [skill]Projectile Speed[-skill].", 5, "H",
-        (Effekt(A_STREUUNG, -0.04, "Spread: $NUMBER$"), Effekt(A_PROJEKTIL, 0.15, "Projectile Speed: $NUMBER$")))],
-    [_S("KursHalten", "Stay the Course", "Each kill while the bomb is out extends the window by 1 second per rank.", 5, "S"),
-     # v0.97 (Nutzerwunsch): statt Explosion (doppelte Sprengsatz) ein Buff nach Sprungweite. Wirkung:
-     # Grad g -> Intervall x (1 - 0,01 g); mechanik_ruecksprung_detonation rechnet den Grad aus dem
-     # gewuenschten Tempobonus um (+100 % Tempo = halbes Intervall = Grad 50).
-     _S("RuecksprungDetonation", "Tailwind", "After you [skill]detonate[-skill], gain more [skill]Fire Rate[-skill] and [skill]Reload Speed[-skill] for 10 seconds - the farther you were from the anchor, the more: up to +20% per rank (full effect at 50 meters).", 5, "HS",
-        # dauer=0: die Timed-Vorlage Skill_Speed hat nur 1 Effekt, verlaengern geht nicht (v0.52) -
-        # also passive Vorlage mit 2 Effekten, und das Modul schaltet nach 10 s ab (_wirkung_uhren).
-        (Effekt(A_FEUERRATE, -0.01, "Fire Rate: $NUMBER$"), Effekt(A_NACHLADEN, -0.01, "Reload Speed: $NUMBER$")))],
-    [_S("Grenzgaenger", "Borderlander", "More than 30 meters from the anchor: +3% [skill]Fire Rate[-skill] and +4% [skill]Magazine Size[-skill] per rank.", 5, "HS",
-        (Effekt(A_FEUERRATE, -0.03, "Fire Rate: $NUMBER$"), Effekt(A_MAGAZIN, 0.04, "Magazine Size: $NUMBER$"))),
+     # v1.63b: HS nur fuer die HUD-Zahl (Schusszaehler); der Effekt ist 0 und wirkt nicht.
+     _S("Echokugel", "Echo Bullet", "Every few shots, your shot fires twice. The counter next to your XP bar shows the shots until the next echo.", 5, "HS",
+        (Effekt(A_SCHADEN, 0.0, ""),))],
+    [_S("KursHalten", "Stay the Course", "Each kill while the bomb is out extends the Time Bomb window.", 5, "S"),
+     # v1.65: HS nur fuer die HUD-Zahl (Kills bis zur Ladung, 5 = geladen); der Effekt ist 0 und wirkt nicht.
+     _S("Zeitschleife", "Time Loop", "Every 5 kills charge a Time Loop. Your next grenade is thrown a second time, half a second later, at no cost. The counter next to your XP bar shows your progress.", 1, "HS",
+        (Effekt(A_SCHADEN, 0.0, ""),))],
+    [_S("Unendlich", "Infinite", "For the first 5 seconds after you throw the bomb, you have infinite ammo.", 1, "S"),
      _S("KeinZurueck", "Point of No Return", "If the bomb expires unused: +25% [skill]Weapon Damage[-skill] for 10 seconds, and no cooldown at all.", 1, "HS",
         (Effekt(A_SCHADEN, 0.25, "Weapon Damage: $NUMBER$"),), dauer=10.0)],
-    [_S("Zeitsprung", "Time Skip", "When you detonate, all enemies on the line between you and the anchor are damaged and staggered. 1 second of invulnerability after you arrive.", 1, "S")],
+    [_S("Zeitsprung", "Unspent Time", "Every enemy you kill releases the time it had left in a burst of energy, damaging nearby enemies in your weapon's element. Kills from the burst release theirs too.", 1, "S")],
 ]
 
 # (Tabelle, Outer-Paket fuer die Objekte - Zer0s Gruppen, weil sie sicher existieren)
@@ -2221,8 +2161,7 @@ S_GEBAUT: dict[str, str] = {
     "Erinnerung": "",
     "VolleRueckerstattung": "",
     "Paradoxon": "",
-    "Vorbelastung": "",
-    "Zeitsprung": "",                                        # v1.12 Immunitaet ueber ZB_Immun_A/B
+    "Zeitsprung": "",                                        # v1.73 Unspent Time (ersetzt Time Skip)
     "Reinigung": "",                                         # v1.12 Immunitaet ueber ZB_Immun_A/B
     "Nachhall": "",                                          # v1.13 Schockwelle statt Rueckstoss
     "Zeitspur": "",                                          # v1.05 Zeitwirbel statt Verlangsamung (Spike A)
@@ -2231,9 +2170,11 @@ S_GEBAUT: dict[str, str] = {
     "Nachbild": "",                                          # v0.93, bestaetigt (Screenshot, 7 s), Leiche wird versteckt
     "Sprengsatz": "",                                        # v0.94 neu: Behavior_Explode beim Zuenden, ungetestet
     "Zeitkapsel": "",                                        # v0.95 Heilung gebaut, nur mit 'zb koop selbst' pruefbar
-    "ZweiteMeinung": "",                                     # v0.95, Koop - VERMUTUNG: wirkt nur als Gastgeber
-    "GemeinsameRueckkehr": "",                               # v0.95, Koop - wie Zweite Meinung
     "Schattenanker": "",                                     # v0.95, Ringpuffer + Halten ueber InputKey, ungetestet
+    "Nachfuellen": "",                                       # v1.57 Refill, gemessen
+    "Unendlich": "",                                         # v1.58 Infinite, im Spiel bestaetigt
+    "GeliehenesLeben": "",                                   # v1.59 Borrowed Health, im Spiel bestaetigt
+    "Zuruecksenden": "",                                     # v1.60 Return to Sender, im Spiel bestaetigt
 }
 
 
@@ -2244,9 +2185,9 @@ SKILL_ICONS: dict[str, tuple[str, str]] = {
     "Gedaechtnis": ("gaige", "SkillIcon-Mechro05"),            # Gehirn
     "Nachwirkung": ("axton", "SkillIcon-Impact"),              # gesplittertes Glas
     "GespannteZeit": ("salvador", "SkillIcon-ImReadyAlready"),  # Wecker
-    "DejaVu": ("maya", "SkillIcon-ThoughtLock"),               # Totenkoepfe in Spirale
-    "Vorbelastung": ("zer0", "SkillIcon-KillConfirmed"),       # Fadenkreuz auf Figur
-    "Wiederholung": ("maya", "SkillIcon-Recompense"),          # Rose
+    "Eile": ("maya", "SkillIcon-ThoughtLock"),                 # v1.56 Platzhalter (von Deja Vu)
+    "Zeitstillstand": ("zer0", "SkillIcon-KillConfirmed"),     # v1.56 Platzhalter (von Prior Record)
+    "Zuruecksenden": ("maya", "SkillIcon-Recompense"),         # v1.56 Platzhalter (von Encore)
     "Nachhall": ("axton", "SkillIcon-LaserSight"),             # Lichtblitz
     "Erinnerung": ("axton", "SkillIcon-DutyCalls"),            # Hundemarken
     "Wiederkehr": ("maya", "SkillIcon-Stagnant"),              # Kreispfeile
@@ -2257,26 +2198,26 @@ SKILL_ICONS: dict[str, tuple[str, str]] = {
     "Auffrischung": ("axton", "Skillicon-willing"),            # Schild mit Kreispfeil
     "Bereitschaft": ("axton", "SkillIcon-Ready"),              # Ampel
     "VolleRueckerstattung": ("salvador", "SkillIcon-MoneyShot"),  # Muenzen
-    "Stabilisator": ("salvador", "SkillIcon-SteadyAsSheGoes"),  # Sextant
+    "GeliehenesLeben": ("salvador", "SkillIcon-SteadyAsSheGoes"),  # v1.56 Platzhalter (von Stabilizer)
     "Reinigung": ("axton", "SkillIcon-Forbearance"),           # Feuerloescher
-    "ZweiteMeinung": ("gaige", "SkillIcon-Mechro25"),          # zwei Schilde
+    "SichereKrits": ("gaige", "SkillIcon-Mechro25"),           # v1.56 Platzhalter (von Second Opinion)
     "Zeitkapsel": ("maya", "SkillIcon-Sphere"),                # Blasen
     "EsWarNiePassiert": ("maya", "SkillIcon-Res"),             # Feder
     "Nachbild": ("zer0", "SkillIcon-Unforseen"),               # Hologramm-Explosion
     "Sprengsatz": ("krieg", "SkillIcon-Psycho18"),             # Dynamit mit Uhr
-    "GemeinsameRueckkehr": ("maya", "SkillIcon-Restoration"),  # Taube
+    "Endspurt": ("maya", "SkillIcon-Restoration"),             # v1.56 Platzhalter (von Homecoming)
     "Schattenanker": ("zer0", "SkillIcon-LikeTheWind"),        # Pixel-Wirbelsturm
-    # DETOUR
+    # OVERCLOCK (bis v1.55 DETOUR)
     "Weite": ("salvador", "SkillIcon-Incite"),                 # Stiefel mit Fluegel
-    "Abstand": ("zer0", "SkillIcon-Squint"),                   # Fernglas
-    "Vorstoss": ("axton", "SkillIcon-Steady"),                 # Widder
-    "SichererAbstand": ("axton", "SkillIcon-Preparation"),     # Schild
+    "Nachfuellen": ("zer0", "SkillIcon-Squint"),               # v1.56 Platzhalter (von Distance)
+    "Dimensionsschleife": ("axton", "SkillIcon-Steady"),       # v1.56 Platzhalter (von Push Forward)
+    "GranatenRueckruf": ("axton", "SkillIcon-Preparation"),    # v1.56 Platzhalter (von Safe Distance)
     "Ausbruch": ("maya", "SkillIcon-Fleet"),                   # Hase
     "Hinterhalt": ("zer0", "SkillIcon-Backstab"),              # Ninja mit Dolch
-    "Weitschuss": ("maya", "SkillIcon-Accelerate"),            # Kugel mit Tempolinien
+    "Echokugel": ("maya", "SkillIcon-Accelerate"),             # v1.56 Platzhalter (von Long Shot)
     "KursHalten": ("salvador", "SkillIcon-Yippekiyay"),        # Cowboy-Totenkopf
-    "RuecksprungDetonation": ("zer0", "Skillicon-velocity"),   # Kugel mit Tempolinien
-    "Grenzgaenger": ("axton", "SkillIcon-Ranger"),             # Gewehr mit Sternen
+    "Zeitschleife": ("zer0", "Skillicon-velocity"),            # v1.56 Platzhalter (von Tailwind)
+    "Unendlich": ("axton", "SkillIcon-Ranger"),                # v1.56 Platzhalter (von Borderlander)
     "KeinZurueck": ("axton", "SkillIcon-DoOrDie"),             # Helm mit Totenkopf
     "Zeitsprung": ("maya", "SkillIcon-Subsequence"),           # Komet mit Einschlag
 }
@@ -2381,7 +2322,7 @@ def _effekte_setzen(obj: UObject, effekte: tuple, outer: str, name: str, mit_pra
     obj.SkillEffectDefinitions = liste[:n]) - eine Zuweisung an ein Struct-Array verliert die
     Inhalte (gemessen v0.61 am Action Skill: alle Eintraege danach ohne Attribut). Stattdessen
     werden sie neutralisiert (Attribut None, Werte 0); die Laenge bleibt. Betroffen war bisher nur
-    Wiederholung (Vorlage Killer: 2 Effekte, gebraucht 1) - nachmessen."""
+    Encore (bis v1.55; Vorlage Killer: 2 Effekte, gebraucht 1)."""
     liste = obj.SkillEffectDefinitions
     if len(liste) < len(effekte):
         logging.error(f"[ZB] {name}: Vorlage hat {len(liste)} Effekte, gebraucht {len(effekte)} - Rest entfaellt")
@@ -2433,9 +2374,70 @@ def _effekte_setzen(obj: UObject, effekte: tuple, outer: str, name: str, mit_pra
             logging.error(f"[ZB] {name}: Praesentationen setzen: {ex}")
 
 
+ANZEIGE_TRAEGER = (A_SCHADEN, A_KRIT, A_MAGAZIN, A_TEMPO)   # je Zeile ein anderes, damit die Zuordnung eindeutig ist
+ANZEIGE_VORBILD = "GD_Assassin_Skills.ActionSkill.Skill_Deception"
+# Dump: SkillEffectDefinitions(6) = InstigatedMeleeDamageModifier, MT_Scale, EffectTarget=TARGET_None;
+#       SkillEffectDefinitions(10) = AttributeToModify None, MT_PostAdd (Cooldown-Zeile).
+ANZEIGE_VORBILD_SCALE, ANZEIGE_VORBILD_ADD = 6, 10
+
+
+def _anzeige_setzen(obj: UObject, zeilen: tuple, outer: str, name: str) -> None:
+    """Anzeige-Effekte (TARGET_None) und Praesentationen an den Baum-Skill. SICHERHEIT: ohne belegtes
+    TARGET_None waere ein Anzeige-Effekt ein echter Dauer-Buff - dann lieber gar keine Zeile."""
+    vorbild = _find("SkillDefinition", ANZEIGE_VORBILD)
+    try:
+        v_scale = vorbild.SkillEffectDefinitions[ANZEIGE_VORBILD_SCALE]
+        v_add = vorbild.SkillEffectDefinitions[ANZEIGE_VORBILD_ADD]
+        ziel_none, mt_scale, mt_add = v_scale.EffectTarget, v_scale.ModifierType, v_add.ModifierType
+        ok = (v_scale.AttributeToModify is not None
+              and v_scale.AttributeToModify.Name == "InstigatedMeleeDamageModifier"
+              and ziel_none != obj.SkillEffectDefinitions[0].EffectTarget)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] {name}: Anzeige - Vorbild {ANZEIGE_VORBILD} nicht lesbar ({ex}), keine orangen Zeilen")
+        return
+    if not ok:
+        logging.error(f"[ZB] {name}: Anzeige - TARGET_None nicht belegt (Vorbild {ziel_none}, Vorlage "
+                      f"{obj.SkillEffectDefinitions[0].EffectTarget}), keine orangen Zeilen")
+        return
+    liste = obj.SkillEffectDefinitions
+    praes = []
+    for i, z in enumerate(zeilen[:min(len(liste), len(ANZEIGE_TRAEGER))]):
+        attr = _attr(ANZEIGE_TRAEGER[i])
+        if attr is None:
+            continue
+        try:
+            sed = liste[i]
+            sed.EffectTarget = ziel_none   # ZUERST - erst danach bekommt der Effekt ein Attribut
+            sed.ModifierType = mt_scale if z.prozent else mt_add
+            sed.AttributeToModify = attr
+            sed.BaseModifierValue.BaseValueConstant = z.basis
+            sed.BaseModifierValue.BaseValueAttribute = None
+            sed.PerGradeUpgrade.BaseValueConstant = z.je_grad
+            sed.PerGradeUpgrade.BaseValueAttribute = None
+            sed.GradeToStartApplyingEffect = 1
+            sed.PerGradeUpgradeInterval = 1
+            p = _copy("AttributePresentationDefinition", PRAES_POSITIV, outer, f"{name}_A{i}")
+            p.Attribute = attr
+            p.Description = z.text
+            p.bDisplayAsPercentage = z.prozent
+            p.bDisplayPercentAsFloat = z.dezimal
+            p.bDontDisplayPlusSign = not z.plus
+            praes.append(p)
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] {name}: Anzeige-Zeile {i}: {ex}")
+    try:
+        obj.SkillEffectPresentations = praes
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] {name}: Anzeige-Praesentationen setzen: {ex}")
+    if name == "Paradoxon":   # eine Stichprobe je Start, damit das Log TARGET_None belegt
+        logging.info(f"[ZB] Anzeige {name}: {len(praes)} Zeile(n), EffectTarget {liste[0].EffectTarget} "
+                     f"(Vorlage sonst {ziel_none} = TARGET_None aus {ANZEIGE_VORBILD})")
+
+
 def _skill_bauen(sk: Skill, outer: str) -> UObject | None:
     """Einen Baum-Skill (und bei HS seinen Effekt-Skill) als Laufzeit-Kopie anlegen. Idempotent."""
     sichtbar = sk.effekte if sk.art in ("H", "KILL") else ()
+    zeilen = ANZEIGE.get(sk.name, ()) if not sichtbar else ()   # v1.67: nur Anzeige, wirkt nicht
     text = sk.text
     if sk.art == "S" and sk.name in S_GEBAUT:
         if S_GEBAUT[sk.name]:
@@ -2445,7 +2447,7 @@ def _skill_bauen(sk: Skill, outer: str) -> UObject | None:
     elif sk.offen:
         text += f" [Not functional yet: {sk.offen}.]"
     try:
-        obj = _copy("SkillDefinition", _vorlage(sk.art, len(sichtbar), 0.0), outer, sk.name)
+        obj = _copy("SkillDefinition", _vorlage(sk.art, max(len(sichtbar), len(zeilen)), 0.0), outer, sk.name)
         obj.SkillName = sk.titel
         obj.SkillDescription = text
         obj.MaxGrade = sk.rang
@@ -2453,6 +2455,8 @@ def _skill_bauen(sk: Skill, outer: str) -> UObject | None:
         if icon is not None:
             obj.SkillIcon = icon
         _effekte_setzen(obj, sichtbar, outer, sk.name, mit_praesentation=True)
+        if zeilen:
+            _anzeige_setzen(obj, zeilen, outer, sk.name)
         if sk.art in ("HS", "KS") and sk.effekte:
             wirk = _copy("SkillDefinition", _vorlage("HS", len(sk.effekte), sk.dauer), outer, f"{sk.name}_Wirkung")
             wirk.SkillName = f"{sk.titel} (Effect)" if sk.art == "HS" else sk.titel
@@ -2610,7 +2614,6 @@ def _immunitaet_tick(dt: float) -> None:
 
 _SKILL_NAMEN = {n.lower(): n for n in SKILL_OUTER}  # Konsole tippt klein - der Objektname nicht
 
-
 def skill_def(name: str, wirkung: bool = False) -> UObject | None:
     name = _SKILL_NAMEN.get(name.lower(), name)
     outer = SKILL_OUTER.get(name)
@@ -2673,15 +2676,16 @@ def fenster_anpassen() -> None:
 
 def mechanik_gelegt() -> None:
     wirkung_an("Ausbruch")             # 3 s, laeuft von selbst ab
-    wirkung_an("Stabilisator")         # bis zum Zuenden/Verpuffen
     wirkung_an("Langzeitgedaechtnis")  # Kritschaden, bis zum Zuenden/Verpuffen
     ticker_start()
     kills_start()
-    mechanik_erinnerung_gelegt()       # merkt sich laufende Kill Skills
+    mechanik_erinnerung_gelegt()       # merkt sich die Haste Stacks
     pc = local_pc()
     if pc is not None:
         mechanik_ammo_gelegt(pc)       # Volle Rueckerstattung: Reserve merken
-    mechanik_paket_b_gelegt()          # Paradoxon, Vorbelastung, Zeitspur: Raenge lesen, Buch leeren
+    mechanik_unendlich_gelegt()        # v1.58: Infinite, 5 s volles Magazin
+    mechanik_paket_b_gelegt()          # Paradoxon, Zeitspur: Raenge lesen, Buch leeren
+    mechanik_ruecksenden_gelegt()      # v1.60: Return to Sender, Buch leeren
     if pc is not None and pc.Pawn is not None and _wurf is None:
         # Paket D: Hologramm am Anker. Fliegt die Bombe (v1.19), setzt es erst _wurf_landen.
         o = pc.Pawn.Location
@@ -2697,14 +2701,10 @@ def mechanik_gezuendet(pawn: UObject) -> None:
         # Das Beben (FX_BEBEN) ist raus - Nutzer, v1.03: "hat ein wenig uebertrieben gewirkt".
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Effekt Ankunft: {ex}")
-    wirkung_aus("Stabilisator")
     wirkung_aus("Langzeitgedaechtnis")
     wirkung_an("Nachwirkung")          # 8 s
     mechanik_kills_gezuendet()         # Wiederkehr, 10 s
-    # Erinnerung zuerst (stellt nur wieder her, was lief), dann Deja-vu (frischt immer auf) -
-    # laeuft beides, ist die zweite Meldung wirkungslos, aber im Log sichtbar.
-    mechanik_erinnerung_gezuendet()
-    mechanik_dejavu()                  # Kill Skills auffrischen (Handgriff 3b)
+    mechanik_erinnerung_gezuendet()    # Haste Stacks vom Legen wiederherstellen
     # Handgriff 4, Paket A. Reihenfolge mit Absicht: erst was am Spieler haengt, dann die Wirkung
     # nach aussen - so steht im Log erst der eigene Zustand, dann die Trefferliste.
     pc = local_pc()
@@ -2712,13 +2712,19 @@ def mechanik_gezuendet(pawn: UObject) -> None:
         mechanik_rueckerstattung(pc, pawn)
     mechanik_reinigung(pawn)
     mechanik_nachhall(pawn)
-    # Ruecksprung-Detonation laeuft seit v0.95 in zuenden() vor dem Teleport (Explosion am Spieler).
-    mechanik_zeitsprung(pawn)
-    # Paket B. Paradoxon vor dem Vorbelastungsfenster: dessen Treffer sollen nicht nachgeschlagen
-    # werden (_eigen schuetzt ohnehin, aber die Reihenfolge macht es auch ohne Flag richtig).
-    mechanik_paradoxon()
-    if pc is not None:
-        mechanik_vorbelastung_gezuendet(pc)
+    try:
+        mechanik_sichere_krits()   # v1.72 Guaranteed Crits
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Guaranteed Crits: {ex}")
+    try:
+        mechanik_endspurt_bombe(pawn)   # v1.69 Crunch Time
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Crunch Time: Bombe: {ex}")
+    mechanik_paradoxon()               # Paket B
+    try:
+        mechanik_ruecksenden_gezuendet()   # v1.60: Return to Sender
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Return to Sender: {ex}")
     # Paket D: die Zeitkapsel hat ausgedient, am Absprungpunkt bleibt das Nachbild.
     holo_entfernen("Zeitkapsel", "gezuendet")
     mechanik_nachbild()
@@ -2732,9 +2738,10 @@ def mechanik_gezuendet(pawn: UObject) -> None:
             try_call("Auffrischung Leben", lambda: pawn.SetHealth(min(float(max_h), float(pawn.GetHealth()) + anteil * float(max_h))))
         if max_s:
             try_call("Auffrischung Schild", lambda: pawn.SetShieldStrength(min(float(max_s), float(pawn.GetShieldStrength()) + anteil * float(max_s))))
-    # Paket E (v0.95): Verbuendete am Ankunftsort - nach Auffrischung, damit der Log-Wert fuer den
-    # eigenen Pawn (Testschalter 'zb koop selbst') beide Aufschlaege getrennt zeigt.
-    mechanik_verbuendete_gezuendet(pawn)
+    try:
+        mechanik_geliehen_gezuendet(pawn)   # v1.59: Borrowed Health, nach Auffrischung
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Borrowed Health: {ex}")
 
 
 def mechanik_verpufft() -> bool:
@@ -2746,16 +2753,14 @@ def mechanik_verpufft() -> bool:
     ticker_stop()
     mechanik_paket_b_verpufft()
     holo_entfernen("Zeitkapsel", "verpufft")
-    wirkung_aus("Stabilisator")
     wirkung_aus("Langzeitgedaechtnis")
     return wirkung_an("KeinZurueck")   # 10 s
 
 
 # --- Handgriff 2: der Ticker (v0.59) --------------------------------------------------------------
 #
-# Vier Skills brauchen etwas, das waehrend der liegenden Bombe jede Sekunde laeuft: Gespannte Zeit
-# (ein Stack je Sekunde) und die drei Entfernungs-Skills Abstand, Sicherer Abstand, Grenzgaenger.
-# Muster aus dem FL4K-Projekt (fl4k_pet on_tick, bewiesen): POST-Hook auf
+# Gespannte Zeit braucht etwas, das waehrend der liegenden Bombe jede Sekunde laeuft (ein Stack je
+# Sekunde), Zeitspur und Zeitkapsel ebenso. Muster aus dem FL4K-Projekt (fl4k_pet on_tick, bewiesen): POST-Hook auf
 # WillowPlayerController:PlayerTick, args.DeltaTime aufsummieren. Der Hook feuert jeden Frame -
 # darum steht die Zustandsabfrage ganz vorn, im Zustand "bereit" kostet er nichts.
 #
@@ -2770,62 +2775,24 @@ TICK_FUNC = "WillowGame.WillowPlayerController:PlayerTick"  # Klasse in WillowGa
 TICK_SEKUNDEN = 1.0
 UU_JE_METER = 100.0
 GESPANNT_STACKS_MAX = 10
-ABSTAND_STUFE_METER = 10.0
-ABSTAND_STUFEN_MAX = 5
-SICHER_AB_METER = 15.0
-GRENZ_AB_METER = 30.0
 
 _tick_akku = 0.0
 _tick_sekunden = 0        # Sekunden seit dem Legen (nur Anzeige)
 _gespannt_stacks = 0
-_abstand_stufe = 0
-_sicher_an = False
-_grenz_an = False
 
 
 def ticker_start() -> None:
-    global _tick_akku, _tick_sekunden, _gespannt_stacks, _abstand_stufe, _sicher_an, _grenz_an
+    global _tick_akku, _tick_sekunden, _gespannt_stacks
     _tick_akku = 0.0
     _tick_sekunden = 0
     _gespannt_stacks = 0
-    _abstand_stufe = 0
-    _sicher_an = False
-    _grenz_an = False
 
 
 def ticker_stop() -> None:
     """Alles abraeumen, was der Ticker eingeschaltet hat. Die Zaehler setzt ticker_start zurueck."""
     if _gespannt_stacks > 0:
         stapel_setzen("GespannteZeit", 0)   # v1.18: Instanzen statt Grad
-    if _abstand_stufe > 0:
-        stapel_setzen("Abstand", 0)
-    if _sicher_an:
-        wirkung_aus("SichererAbstand")
-    if _grenz_an:
-        wirkung_aus("Grenzgaenger")
     ticker_start()
-
-
-def wirkung_grad(name: str, grad: int) -> bool:
-    """Effekt-Skill auf einen Grad setzen: einschalten, wenn er nicht laeuft, sonst umstufen."""
-    wirk = skill_def(name, wirkung=True)
-    if wirk is None:
-        return False
-    if not skill_aktiv(wirk):
-        return wirkung_an(name, grad)
-    ok = skill_grad(wirk, grad)
-    logging.info(f"[ZB] Wirkung {name}: Grad {grad} -> {ok}")
-    return ok
-
-
-def wirkung_schalten(name: str, soll: bool, ist: bool) -> bool:
-    """Zustandsskill nach Bedingung: nur beim Wechsel schalten, gibt den neuen Zustand zurueck."""
-    if soll and not ist:
-        return wirkung_an(name)
-    if ist and not soll:
-        wirkung_aus(name)
-        return False
-    return ist
 
 
 def anker_abstand(pawn: UObject) -> float | None:
@@ -2851,7 +2818,7 @@ def ticker_sekunde(pc: UObject) -> None:
 
 def _ticker_sekunde_rest(pc: UObject) -> None:
     """Einmal je Sekunde im Zustand 'gelegt'."""
-    global _tick_sekunden, _gespannt_stacks, _abstand_stufe, _sicher_an, _grenz_an
+    global _tick_sekunden, _gespannt_stacks
     _tick_sekunden += 1
     pawn = pc.Pawn
     if pawn is None:
@@ -2863,22 +2830,10 @@ def _ticker_sekunde_rest(pc: UObject) -> None:
         _gespannt_stacks += 1
         stapel_setzen("GespannteZeit", _gespannt_stacks)   # v1.18: ein Stack = eine Instanz (HUD)
 
-    # Entfernung zum Anker
     uu = anker_abstand(pawn)
-    meter = (uu or 0.0) / UU_JE_METER
-    if uu is not None:
-        stufe = min(ABSTAND_STUFEN_MAX, int(meter // ABSTAND_STUFE_METER))
-        rang_ab = skill_rang("Abstand")
-        if rang_ab > 0 and stufe != _abstand_stufe:
-            stapel_setzen("Abstand", stufe)   # v1.18: Stufe = Instanzen (HUD)
-            _abstand_stufe = stufe
-        _sicher_an = wirkung_schalten("SichererAbstand", meter > SICHER_AB_METER, _sicher_an)
-        _grenz_an = wirkung_schalten("Grenzgaenger", meter > GRENZ_AB_METER, _grenz_an)
-
     logging.info(
-        f"[ZB] Ticker {_tick_sekunden}s | Anker {meter:.1f} m ({(uu or 0.0):.0f} uu)"
-        f" | Gespannte Zeit {_gespannt_stacks}/{GESPANNT_STACKS_MAX} | Abstand Stufe {_abstand_stufe}"
-        f" | Sicher {'an' if _sicher_an else 'aus'} | Grenz {'an' if _grenz_an else 'aus'}"
+        f"[ZB] Ticker {_tick_sekunden}s | Anker {(uu or 0.0) / UU_JE_METER:.1f} m"
+        f" | Gespannte Zeit {_gespannt_stacks}/{GESPANNT_STACKS_MAX}"
         f" | WeaponDamage(Waffe)={attr_value('AttributeDefinition', A_SCHADEN, pawn.Weapon) if pawn.Weapon else '-'}"
     )
 
@@ -2932,6 +2887,18 @@ def _on_notify_killed_enemy(obj: UObject, args: Any, ret: Any, func: Any) -> Non
             kill_stack_plus(name)   # v1.13: jeder Kill, auch ohne liegende Bombe
         except Exception as ex:  # noqa: BLE001
             logging.error(f"[ZB] Kill-Stacks: {ex}")
+        try:
+            mechanik_nachfuellen(pc)   # v1.57: Refill, jeder Kill
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Refill: {ex}")
+        try:
+            mechanik_geliehen_kill()   # v1.59: Borrowed Health, Kill tilgt Schuld
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Borrowed Health Kill: {ex}")
+        try:
+            mechanik_zeitschleife_kill()   # v1.65: Time Loop laden
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Time Loop Kill: {ex}")
     if _state != ZUSTAND_GELEGT or not ist_chronomaster(pc):
         return
     _kills += 1
@@ -2941,11 +2908,10 @@ def _on_notify_killed_enemy(obj: UObject, args: Any, ret: Any, func: Any) -> Non
 
 # --- Kill-Stacks (v1.13, Nutzerwunsch 2026-09-26) -------------------------------------------------
 #
-# Deja-vu, Wiederholung und Vorstoss stapeln unbegrenzt. EIN Zaehler fuer alle drei: jeder Kill +1.
-# Verfall (Nutzerentscheidung "einzeln abbauen"): 3 s nach dem letzten Kill faellt jede Sekunde
-# ein Stack. Wirkung ueber die Effekt-Skills <Name>_Wirkung, Grad = Rang x Stacks (skill_grad =
-# UpdateSkillGrade + Refresh, fuer Gespannte Zeit gemessen). Deja-vu haelt beim Zuenden fest (Frist
-# neu), Erinnerung stellt beim Zuenden den Stapel vom Legen wieder her.
+# Seit v1.61 traegt nur Haste Stacks (Eile) diesen Zaehler (bis v1.55: Deja-vu, Encore, Push Forward).
+# Jeder Kill +1, dazu Feuer-Stacks aus Dauerfeuer. Verfall (Nutzerentscheidung "einzeln abbauen"):
+# 3 s nach dem letzten Stack faellt jede Sekunde einer. Wirkung = Instanzen des Effekt-Skills
+# Eile_Wirkung (stapel_setzen). Erinnerung stellt beim Zuenden den Stapel vom Legen wieder her.
 
 KILL_STACK_FRIST_S = 3.0
 KILL_STACK_TAKT_S = 1.0
@@ -2954,13 +2920,29 @@ _kill_stacks = 0
 _kill_frist = 0.0
 _kill_takt = 0.0
 
+# v1.61 Haste Stacks (docs/skills.md 9.2): hoechstens 20 Stacks, davon hoechstens 10 aus Dauerfeuer
+# (Grund: Waffen wie die Infinity). Dauerfeuer = Schuesse mit hoechstens FEUER_PAUSE_MAX_S Abstand;
+# je FEUER_STACK_S am Stueck ein Stack. Erkannt am Feuer-Hook, NICHT am Magazin (Nutzer: Infinity).
+# Abbau: erst die Feuer-Stacks, dann die Kill-Stacks. Jeder neue Stack startet die Frist neu.
+EILE_MAX = 20
+EILE_FEUER_MAX = 10
+FEUER_STACK_S = 2.0
+FEUER_PAUSE_MAX_S = 1.0
+FIRE_FUNC = "WillowGame.WillowWeapon:FireAmmunition"   # Dump: Function WillowGame.WillowWeapon:FireAmmunition; BO2 Test 53
+_feuer_stacks = 0
+_feuer_seit_schuss = 99.0   # Sekunden seit dem letzten eigenen Schuss
+_feuer_am_stueck = 0.0      # Sekunden ununterbrochenes Feuer
+_feuer_spur_gemeldet = False
+_rang_eile_cache = 0
+_rang_eile_uhr = 0.0
+
 
 _ks_rang_gesetzt: dict[str, int] = {}   # v1.14: fuer welchen Rang die Effektwerte zuletzt gesetzt wurden
 
 
 def _ks_werte_setzen(name: str, wirk: UObject, rang: int) -> None:
-    """Jede Instanz (= ein Stack, Grad 1) traegt Wert x Rang. Elementweise geschrieben wie bei
-    Rueckenwind (Spike D). Nur bei Rangwechsel; danach werden die Instanzen neu aufgebaut."""
+    """Jede Instanz (= ein Stack, Grad 1) traegt Wert x Rang. Elementweise geschrieben (Spike D).
+    Nur bei Rangwechsel; danach werden die Instanzen neu aufgebaut."""
     if _ks_rang_gesetzt.get(name) == rang:
         return
     sk = next((s for tabelle, _ in BAEUME for tier in tabelle for s in tier if s.name == name), None)
@@ -2976,7 +2958,7 @@ def _ks_werte_setzen(name: str, wirk: UObject, rang: int) -> None:
     logging.info(f"[ZB] Kill-Stacks {name}: Werte fuer Rang {rang} gesetzt")
 
 
-# v1.17: EIN STACK = EINE INSTANZ. zb stapeltest (v1.16) im Spiel: jede ActivateSkill legt eine
+# v1.17: EIN STACK = EINE INSTANZ. Probe v1.16 im Spiel (Werkzeug inzwischen ausgebaut): jede ActivateSkill legt eine
 # weitere Instanz desselben Skills an (Krit 2,484 -> 2,524 -> 2,564 -> 2,604), jede DeactivateSkill
 # nimmt genau eine weg (-> 2,564), und das HUD zeigt die Zahl der Instanzen ("3x" -> "2x"). So stapelt
 # auch Zer0s Critical Ascension (MaxGrade 5, zaehlt bis 999). Jede Instanz laeuft mit Grad 1.
@@ -3021,49 +3003,458 @@ def stapel_setzen(name: str, n: int, neu: bool = False) -> None:
 
 
 def _kill_stacks_anwenden(grund: str) -> None:
-    """Die Instanzen der drei Kill-Stack-Skills auf _kill_stacks bringen. Still."""
+    """Die Instanzen der Kill-Stack-Skills auf Kill- + Feuer-Stacks bringen. Still."""
     for name in KILL_SKILLS:
-        stapel_setzen(name, _kill_stacks)
-
-
-def stapeltest(teil: str = "") -> None:
-    """zb stapeltest (v1.16): stapelt das Spiel Instanzen desselben Skills? Die HUD-Zahl bei Zer0s
-    Critical Ascension (MaxGrade 5, zaehlt bis 999, Dauer 300 s) ist nicht der Grad - Vermutung:
-    die Zahl der gleichzeitig laufenden Instanzen. Probe am Wirkungs-Skill von Wiederholung (Krit)."""
-    global _kill_stacks
-    pc = local_pc()
-    wirk = skill_def("Wiederholung", wirkung=True)
-    if pc is None or pc.Pawn is None or wirk is None:
-        logging.error("[ZB] stapeltest: kein Pawn oder kein Wirkungs-Skill")
-        return
-    krit = lambda: attr_value("AttributeDefinition", A_KRIT, pc.Pawn)  # noqa: E731
-    if teil == "aus":
-        logging.info(f"[ZB] stapeltest aus: DeactivateSkill einmal -> {skill_aus(wirk)}, aktiv {skill_aktiv(wirk)}, Krit {krit()}")
-        return
-    _kill_stacks = 0   # die normale Stack-Logik aus dem Weg
-    _kill_stacks_anwenden("stapeltest")
-    rang = max(1, skill_rang("Wiederholung"))
-    _ks_werte_setzen("Wiederholung", wirk, rang)
-    logging.info(f"[ZB] stapeltest: aus, Krit {krit()}")
-    for i in range(1, 4):
-        logging.info(f"[ZB] stapeltest: ActivateSkill #{i} (Grad 1) -> {skill_an(wirk, 1)}, aktiv {skill_aktiv(wirk)}, Krit {krit()}")
-    logging.info("[ZB] stapeltest: jetzt HUD ansehen, dann 'zb stapeltest aus'")
+        stapel_setzen(name, _kill_stacks + _feuer_stacks)
 
 
 def kill_stack_plus(name: str = "") -> None:
     global _kill_stacks, _kill_frist, _kill_takt
     if not any(skill_rang(n) > 0 for n in KILL_SKILLS):
         return
-    _kill_stacks += 1
+    if _kill_stacks + _feuer_stacks < EILE_MAX:
+        _kill_stacks += 1
     _kill_frist, _kill_takt = KILL_STACK_FRIST_S, 0.0
     _kill_stacks_anwenden("Kill")
+    logging.info(f"[ZB] Kill-Stacks: {_kill_stacks} + Feuer {_feuer_stacks} ({name}) - {_eile_werte()}")
+
+
+def _eile_werte() -> str:
+    """Messgroessen fuer Haste Stacks: Feuerintervall und Nachladezeit der Waffe in der Hand (Ist /
+    Basis; negative Scale-Summen teilen, CLAUDE.md) und die Schildaufladung am Pawn."""
     pc = local_pc()
-    krit = attr_value("AttributeDefinition", A_KRIT, pc.Pawn) if pc and pc.Pawn else "?"
-    logging.info(f"[ZB] Kill-Stacks: {_kill_stacks} ({name}) - Krit-Attribut jetzt {krit}")
+    pawn = pc.Pawn if pc else None
+    if pawn is None:
+        return "kein Pawn"
+    teile = []
+    w = pawn.Weapon
+    if w is not None:
+        try:
+            teile.append(f"Intervall {float(w.FireInterval):.4f}/{float(w.FireIntervalBaseValue):.4f}")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            teile.append(f"Nachladen {float(w.ReloadTime):.3f}/{float(w.ReloadTimeBaseValue):.3f}")
+        except Exception:  # noqa: BLE001
+            pass
+    teile.append(f"Schildladen {attr_value('ResourcePoolAttributeDefinition', A_SCHILDLADEN, pawn)}")
+    return ", ".join(teile)
+
+
+def _on_fire_ammunition(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    """PRE auf WillowWeapon:FireAmmunition - jeder Schuss jeder Waffe. Nur die Waffe in der eigenen
+    Hand zaehlt; der Hook merkt sich nur den Zeitpunkt, gerechnet wird im Tick."""
+    global _feuer_seit_schuss, _feuer_spur_gemeldet
+    if _rang_eile_cache <= 0:
+        return
+    pc = local_pc()
+    pawn = pc.Pawn if pc else None
+    w = pawn.Weapon if pawn is not None else None
+    if w is None:
+        return
+    try:
+        if obj._path_name() != w._path_name():
+            return
+    except Exception:  # noqa: BLE001
+        return
+    _feuer_seit_schuss = 0.0
+    if not _feuer_spur_gemeldet:
+        _feuer_spur_gemeldet = True
+        logging.info(f"[ZB] Haste Stacks: Feuer-Hook feuert ({obj.Name})")
+
+
+# v1.63: Echo Bullet (Overclock T3, docs/skills.md 9.2). Jeder N-te Schuss der Waffe in der Hand feuert
+# doppelt (N je Rang: ECHO_JEDER).
+# v1.63 erster Weg, IM SPIEL OHNE WIRKUNG: WillowWeapon.ProjectilesPerShot im PRE verdoppelt (1 -> 2, im POST
+# zurueck). Das Feld stand nachweislich auf 2, der Schuss blieb einfach (Nutzer, Log 11:23). Das Spiel liest
+# die Projektilzahl beim Schuss also nicht aus diesem Feld.
+# v1.63b: Im POST ruft das Modul FireAmmunition der eigenen Waffe ein zweites Mal (Sperre gegen Rekursion)
+# und erstattet die verbrauchte Munition (Pool und ReloadCnt gemeinsam, Rezept Refill). Messung: Gegner-
+# Treffer (WillowAIPawn:TakeDamage) im Fenster ECHO_MESS_S nach dem Echo- und nach dem Schuss davor.
+# HUD: Zaehler = Instanzen des Effekt-Skills Echokugel_Wirkung (stapel_setzen), Platz 2.
+ECHO_JEDER = (10, 9, 8, 6, 5)   # Rang 1..5: jeder N-te Schuss
+ECHO_MESS_S = 0.25
+_rang_echo_cache = 0
+_echo_zaehler = 0
+_echo_jetzt = False        # dieser Schuss wird gedoppelt (PRE -> POST)
+_echo_im_zweiten = False   # Rekursionssperre waehrend des zweiten Aufrufs
+_echo_mess: list = []      # [Art, Restzeit, Treffer] des laufenden Messfensters
+_echo_vorher_treffer = -1  # Treffer des letzten normalen Schusses (Gegenfall)
+_echo_grund = ""           # wer den Zusatzschuss ausloest (Echo Bullet / Dimensional Loop)
+
+# v1.64: Dimensional Loop (Overclock T2). Nach jedem Nachladen feuern die naechsten <Rang> Schuesse doppelt -
+# ueber denselben Zusatzschuss wie Echo Bullet. Nachladen: PRE auf WillowWeapon:PlayReloadAnim (Dump; im
+# BO2-Projekt bewiesen) merkt sich Waffe und Magazin. Erst wenn das Magazin beim naechsten eigenen Schuss
+# VOLLER ist, war das Nachladen fertig (abgebrochenes Nachladen = gleiches Magazin = nichts).
+RELOAD_FUNC = "WillowGame.WillowWeapon:PlayReloadAnim"
+_rang_loop_cache = 0
+_loop_rest = 0
+_nachladen: tuple | None = None   # (Pfad der Waffe, Magazin beim Start des Nachladens)
+_nachladen_gemeldet = False
+
+
+def _on_reload_anim(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _nachladen, _nachladen_gemeldet
+    if _rang_loop_cache <= 0:
+        return
+    w = _echo_waffe(obj)
+    if w is None:
+        return
+    try:
+        _nachladen = (w._path_name(), int(w.ReloadCnt))
+    except Exception:  # noqa: BLE001
+        return
+    if not _nachladen_gemeldet:
+        _nachladen_gemeldet = True
+        logging.info(f"[ZB] Dimensional Loop: Nachlade-Hook feuert ({obj.Name}, Magazin {_nachladen[1]})")
+
+
+def _echo_treffer_zaehlen() -> None:
+    """Aus dem Gegner-Schadens-Hook: nur ein Zaehler, kein Engine-Zugriff."""
+    if _echo_mess:
+        _echo_mess[2] += 1
+
+
+def _echo_mess_tick(dt: float) -> None:
+    global _echo_vorher_treffer
+    if not _echo_mess:
+        return
+    _echo_mess[1] -= dt
+    if _echo_mess[1] > 0:
+        return
+    art, _, n = _echo_mess
+    _echo_mess.clear()
+    if art == "echo":
+        logging.info(f"[ZB] Zusatzschuss: Treffer im Fenster {ECHO_MESS_S:.2f} s - Doppelschuss {n}, normaler Schuss davor {_echo_vorher_treffer}")
+    else:
+        _echo_vorher_treffer = n
+
+
+def _echo_waffe(obj: UObject) -> UObject | None:
+    pc = local_pc()
+    pawn = pc.Pawn if pc else None
+    w = pawn.Weapon if pawn is not None else None
+    if w is None:
+        return None
+    try:
+        return w if obj._path_name() == w._path_name() else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _on_echo_pre(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _echo_zaehler, _echo_jetzt, _echo_grund, _nachladen, _loop_rest
+    if (_rang_echo_cache <= 0 and _rang_loop_cache <= 0) or _echo_im_zweiten:
+        return
+    w = _echo_waffe(obj)
+    if w is None:
+        return
+    grund = []
+    if _rang_loop_cache > 0:
+        if _nachladen is not None:
+            pfad, mag_start = _nachladen
+            _nachladen = None
+            try:
+                mag = int(w.ReloadCnt)
+                if pfad == w._path_name() and mag > mag_start:
+                    _loop_rest = _rang_loop_cache
+                    logging.info(f"[ZB] Dimensional Loop: nachgeladen ({mag_start} -> {mag}), {_loop_rest} Doppelschuesse")
+            except Exception:  # noqa: BLE001
+                pass
+        if _loop_rest > 0:
+            _loop_rest -= 1
+            grund.append("Dimensional Loop")
+            stapel_setzen("Dimensionsschleife", _loop_rest)   # HUD: verbleibende Doppelschuesse
+    if _rang_echo_cache > 0:
+        _echo_zaehler += 1
+        jeder = ECHO_JEDER[min(_rang_echo_cache, len(ECHO_JEDER)) - 1]
+        if _echo_zaehler >= jeder:
+            _echo_zaehler = 0
+            grund.append("Echo Bullet")
+        stapel_setzen("Echokugel", _echo_zaehler)   # HUD: 1..N-1, beim Echo 0
+    if grund:
+        _echo_jetzt = True
+        _echo_grund = " + ".join(grund)
+
+
+def _on_echo_post(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _echo_jetzt, _echo_im_zweiten
+    if _echo_im_zweiten or (_rang_echo_cache <= 0 and _rang_loop_cache <= 0):
+        return
+    w = _echo_waffe(obj)
+    if w is None:
+        return
+    if not _echo_jetzt:
+        _echo_mess[:] = ["normal", ECHO_MESS_S, 0]
+        return
+    _echo_jetzt = False
+    try:
+        mag, kosten = int(w.ReloadCnt), max(1, int(w.ShotCost))
+        pool = w.AmmoPool.Data
+        if mag < kosten and pool is not None:
+            # Magazin leer geschossen: die Patrone fuer das Echo leihen (wird unten verrechnet)
+            pool.CurrentValue = float(pool.CurrentValue) + kosten
+            w.ReloadCnt = mag + kosten
+        vor_mag = int(w.ReloadCnt)
+        vor_pool = float(pool.CurrentValue) if pool is not None else -1.0
+        _echo_im_zweiten = True
+        try:
+            w.FireAmmunition()
+        finally:
+            _echo_im_zweiten = False
+        verbraucht = vor_mag - int(w.ReloadCnt)
+        if verbraucht > 0:
+            w.ReloadCnt = int(w.ReloadCnt) + verbraucht
+            if pool is not None:
+                pool.CurrentValue = float(pool.CurrentValue) + verbraucht
+        if mag < kosten and pool is not None:
+            pool.CurrentValue = float(pool.CurrentValue) - kosten
+            w.ReloadCnt = int(w.ReloadCnt) - kosten
+        _echo_mess[:] = ["echo", ECHO_MESS_S, 0]
+        logging.info(f"[ZB] {_echo_grund}: zweiter Schuss ausgeloest - verbraucht {verbraucht}, erstattet;"
+                     f" Magazin {mag} -> {int(w.ReloadCnt)}, Pool {vor_pool:.0f} -> {float(pool.CurrentValue) if pool is not None else -1:.0f}")
+    except Exception as ex:  # noqa: BLE001
+        _echo_im_zweiten = False
+        logging.error(f"[ZB] Echo Bullet: zweiter Schuss: {ex}")
+
+
+# v1.65: Time Loop (Overclock T4, docs/skills.md 9.2). Alle 5 Kills laedt er sich auf; die naechste Granate
+# wird 0,5 s spaeter ein zweites Mal geworfen. SPIKE in zwei Teilen:
+#  1. Wurf erkennen: welche Funktion beim Wurf feuert, steht nicht im Dump. Vier Kandidaten (Dump, alle
+#     WillowGame): WillowPlayerController ThrowGrenade / ServerThrowGrenade / GrenadeThrowComplete und
+#     WillowGrenadeMod:OnGrenadeSpawned. Jeder loggt beim ersten Feuern; der erste je Wurf (Sperre 0,3 s) zaehlt.
+#  2. Zweiter Wurf: pc.ThrowGrenade() - dieselbe Idee wie der Zusatzschuss (v1.63b). Vorher +1 Granate in den
+#     Pool (der zweite Wurf kostet nichts, und auch mit der letzten Granate geht er); hat der Wurf nichts
+#     verbraucht, wird sie wieder abgezogen. Ob ein Wurf entstand, zeigt der Pool.
+# HUD: Zeitschleife_Wirkung-Instanzen = Kills bis zur Ladung (5 = geladen).
+ZEITSCHLEIFE_KILLS = 5
+# v1.65 gemessen (Log 11:40): ThrowGrenade feuert sofort beim Wurf, GrenadeThrowComplete ~1 s spaeter
+# (zaehlte so als zweiter Wurf); ServerThrowGrenade und OnGrenadeSpawned meldeten sich nicht. v1.65b: nur noch
+# ThrowGrenade.
+WURF_FUNCS = ("WillowGame.WillowPlayerController:ThrowGrenade",)
+# v1.65d: pc.ThrowGrenade(def) 0,5 s nach dem Wurf lief fehlerfrei und tat NICHTS (Log 11:47: Vorrat sank nur
+# um die erste Granate). Vermutung: der eigene Wurf laeuft noch (GrenadeThrowComplete kommt erst ~1 s spaeter),
+# und das Spiel verwirft einen neuen. Darum startet der zweite Wurf erst NACH GrenadeThrowComplete.
+WURF_FERTIG_FUNC = "WillowGame.WillowPlayerController:GrenadeThrowComplete"
+_zs_warten = False   # geladen geworfen, zweiter Wurf wartet auf GrenadeThrowComplete
+
+
+def _on_wurf_fertig(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _zs_warten, _zs_geplant
+    if not _zs_warten or _zs_im_zweiten:
+        return
+    _zs_warten = False
+    _zs_geplant = 0.05   # naechster Tick
+    logging.info("[ZB] Time Loop: GrenadeThrowComplete - zweiter Wurf jetzt")
+_zs_kills = 0
+_zs_geplant = -1.0       # Sekunden bis zum zweiten Wurf (-1 = nichts geplant)
+_zs_sperre = 0.0         # nach einem erkannten Wurf: weitere Hooks desselben Wurfs ignorieren
+_zs_im_zweiten = False
+_zs_gemeldet: set[str] = set()
+_zs_probe: tuple | None = None   # (Pool-Name, Soll-Stand, Restzeit) - Abrechnung nach dem zweiten Wurf
+# v1.65c: ThrowGrenade verlangt ProjectileDefinition (gemessen: "missing 1 required positional argument") -
+# sie kommt aus den Argumenten des ECHTEN Wurfs. Und die Granate wird erst ~1 s NACH ThrowGrenade abgezogen
+# (gemessen: die Leihgabe von v1.65b bezahlte den ersten Wurf). Darum Abrechnung am Ende: Vorrat beim echten
+# Wurf merken, 1,5 s nach dem zweiten Wurf auf genau eins weniger setzen.
+_zs_def = None
+_zs_vorrat = -1.0
+
+
+def _granaten_pool() -> tuple[str, UObject] | tuple[None, None]:
+    """v1.65b: _ammo_pools (AmmoResourcePool) fand ihn nicht - im Spiel gemessen, "kein Granaten-Pool".
+    Die Ressource heisst laut Dump D_Resources.AmmoResources.Ammo_Grenade_Protean. Darum alle ResourcePools der
+    Welt, und verglichen werden der Name der Pool-Definition UND der Ressource. Findet sich nichts, kommen
+    alle Namen ins Log."""
+    gesehen = []
+    for pool in unrealsdk.find_all("ResourcePool", exact=False):
+        try:
+            pfad = pool._path_name()
+            if "Default__" in pfad or pool.Definition is None:
+                continue
+            namen = [str(pool.Definition.Name)]
+            res = getattr(pool.Definition, "Resource", None)
+            if res is not None:
+                namen.append(str(res.Name))
+            gesehen.append(f"{pool.Class.Name}:{'/'.join(namen)}")
+            if any("grenade" in n.lower() for n in namen):
+                return "/".join(namen), pool
+        except Exception:  # noqa: BLE001
+            continue
+    logging.info(f"[ZB] Time Loop: Pools gesehen ({len(gesehen)}): {', '.join(gesehen)}")
+    return None, None
+
+
+def mechanik_zeitschleife_kill() -> None:
+    global _zs_kills
+    if skill_rang("Zeitschleife") <= 0 or _zs_kills >= ZEITSCHLEIFE_KILLS:
+        return
+    _zs_kills += 1
+    stapel_setzen("Zeitschleife", _zs_kills)
+    if _zs_kills >= ZEITSCHLEIFE_KILLS:
+        logging.info("[ZB] Time Loop: geladen - die naechste Granate kommt doppelt")
+
+
+def _make_wurf_hook(fname: str):
+    kurz = fname.rsplit(".", 1)[-1]
+
+    def hook(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+        global _zs_sperre, _zs_geplant, _zs_warten
+        if _zs_im_zweiten:
+            return
+        if kurz not in _zs_gemeldet:
+            _zs_gemeldet.add(kurz)
+            logging.info(f"[ZB] Time Loop: Wurf-Hook feuert - {kurz} ({obj.Name})")
+        global _zs_def, _zs_vorrat
+        if _zs_sperre > 0:
+            return
+        _zs_sperre = 0.3
+        _rueckruf_wurf()   # v1.68 Grenade Recall
+        if skill_rang("Zeitschleife") <= 0:
+            return
+        logging.info(f"[ZB] Time Loop: Wurf erkannt ueber {kurz}, Kills {_zs_kills}/{ZEITSCHLEIFE_KILLS}")
+        if _zs_kills >= ZEITSCHLEIFE_KILLS and _zs_geplant < 0 and not _zs_warten:
+            try:
+                _zs_def = args.ProjectileDefinition
+            except Exception as ex:  # noqa: BLE001
+                _zs_def = None
+                logging.error(f"[ZB] Time Loop: ProjectileDefinition aus dem Wurf: {ex}")
+            _, pool = _granaten_pool()
+            _zs_vorrat = float(pool.CurrentValue) if pool is not None else -1.0
+            logging.info(f"[ZB] Time Loop: Definition {_zs_def.Name if _zs_def is not None else None}, Vorrat beim Wurf {_zs_vorrat:.0f}")
+            _zs_warten = True   # v1.65d: der zweite Wurf startet bei GrenadeThrowComplete
+    return hook
+
+
+# v1.68: Grenade Recall (Overclock T2, docs/skills.md 9.2). Jeder echte Wurf (nicht der zweite von Time Loop)
+# kommt mit 6 % je Rang zurueck. Das Spiel zieht die Granate erst ~1 s nach ThrowGrenade ab (v1.65c), und die
+# Abrechnung von Time Loop setzt den Vorrat ~1,9 s nach dem Wurf absolut. Darum die Rueckgabe erst nach 2,5 s:
+# +1, aber hoechstens bis zum Vorrat beim Wurf (kein Ueberlaufen ueber das Maximum).
+RUECKRUF_JE_RANG = 0.06
+RUECKRUF_NACH_S = 2.5
+_rueckruf_offen: list[list[float]] = []   # je zurueckkehrende Granate [Restzeit, Vorrat beim Wurf]
+
+
+def _rueckruf_wurf() -> None:
+    rang = skill_rang("GranatenRueckruf")
+    if rang <= 0:
+        return
+    chance = RUECKRUF_JE_RANG * rang
+    wurf = random.random()
+    if wurf >= chance:
+        logging.info(f"[ZB] Grenade Recall: kein Rueckruf ({wurf:.2f} >= {chance:.2f})")
+        return
+    _, pool = _granaten_pool()
+    if pool is None:
+        logging.error("[ZB] Grenade Recall: kein Granaten-Pool gefunden")
+        return
+    vorrat = float(pool.CurrentValue)
+    _rueckruf_offen.append([RUECKRUF_NACH_S, vorrat])
+    logging.info(f"[ZB] Grenade Recall: Rueckruf! ({wurf:.2f} < {chance:.2f}), Vorrat beim Wurf {vorrat:.0f}")
+
+
+def _rueckruf_tick(dt: float) -> None:
+    if not _rueckruf_offen:
+        return
+    for eintrag in _rueckruf_offen:
+        eintrag[0] -= dt
+    faellig = [e for e in _rueckruf_offen if e[0] <= 0]
+    if not faellig:
+        return
+    _rueckruf_offen[:] = [e for e in _rueckruf_offen if e[0] > 0]
+    _, pool = _granaten_pool()
+    if pool is None:
+        logging.error("[ZB] Grenade Recall: kein Granaten-Pool bei der Rueckgabe")
+        return
+    for _, vorrat in faellig:
+        jetzt = float(pool.CurrentValue)
+        neu = min(jetzt + 1.0, max(jetzt, vorrat))
+        pool.CurrentValue = neu
+        logging.info(f"[ZB] Grenade Recall: Granate zurueck - Vorrat {jetzt:.0f} -> {neu:.0f} (beim Wurf {vorrat:.0f})")
+
+
+def _zeitschleife_tick(pc: UObject, dt: float) -> None:
+    global _zs_sperre, _zs_geplant, _zs_im_zweiten, _zs_kills, _zs_probe
+    _rueckruf_tick(dt)
+    if _zs_sperre > 0:
+        _zs_sperre -= dt
+    if _zs_probe is not None:
+        name, soll, rest = _zs_probe
+        rest -= dt
+        if rest > 0:
+            _zs_probe = (name, soll, rest)
+        else:
+            _zs_probe = None
+            _, pool = _granaten_pool()
+            if pool is not None:
+                jetzt = float(pool.CurrentValue)
+                pool.CurrentValue = soll
+                logging.info(f"[ZB] Time Loop: Abrechnung {name}: vor der Abrechnung {jetzt:.0f}, gesetzt auf {soll:.0f}"
+                             f" (Vorrat beim Wurf {soll + 1:.0f}, beide Wuerfe zusammen kosten 1)")
+    if _zs_geplant < 0:
+        return
+    _zs_geplant -= dt
+    if _zs_geplant > 0:
+        return
+    _zs_geplant = -1.0
+    _zs_kills = 0
+    stapel_setzen("Zeitschleife", 0)
+    name, pool = _granaten_pool()
+    if pool is None:
+        logging.error("[ZB] Time Loop: kein Granaten-Pool gefunden")
+        return
+    if _zs_def is None:
+        logging.error("[ZB] Time Loop: keine ProjectileDefinition vom Wurf - kein zweiter Wurf")
+        return
+    vorher = float(pool.CurrentValue)
+    if vorher < 1:
+        pool.CurrentValue = 1.0   # die letzte Granate ist schon weg - fuer den Wurf leihen, die Abrechnung gleicht aus
+    _zs_im_zweiten = True
+    try:
+        r = pc.ThrowGrenade(_zs_def)
+        logging.info(f"[ZB] Time Loop: ThrowGrenade({_zs_def.Name}) -> {r}; {name} vor dem zweiten Wurf {vorher:.0f}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Time Loop: ThrowGrenade(): {ex}")
+    finally:
+        _zs_im_zweiten = False
+    if _zs_vorrat >= 1:
+        _zs_probe = (name, _zs_vorrat - 1, 1.5)
+
+
+def _feuer_stack_tick(dt: float) -> None:
+    """Dauerfeuer messen. Den Rang liest der Tick hoechstens einmal je Sekunde (der Hook laeuft je
+    Schuss und soll nichts nachschlagen)."""
+    global _feuer_seit_schuss, _feuer_am_stueck, _feuer_stacks, _kill_frist, _kill_takt
+    global _rang_eile_cache, _rang_eile_uhr, _rang_echo_cache, _rang_loop_cache
+    _echo_mess_tick(dt)
+    pc_zs = local_pc()
+    if pc_zs is not None:
+        _zeitschleife_tick(pc_zs, dt)   # v1.65 Time Loop
+    _rang_eile_uhr -= dt
+    if _rang_eile_uhr <= 0:
+        _rang_eile_uhr = 1.0
+        _rang_eile_cache = skill_rang("Eile")
+        _rang_echo_cache = skill_rang("Echokugel")   # v1.63, gleicher Takt
+        _rang_loop_cache = skill_rang("Dimensionsschleife")   # v1.64
+    if _rang_eile_cache <= 0:
+        return
+    _feuer_seit_schuss += dt
+    if _feuer_seit_schuss > FEUER_PAUSE_MAX_S:
+        _feuer_am_stueck = 0.0
+        return
+    _feuer_am_stueck += dt
+    if _feuer_am_stueck < FEUER_STACK_S:
+        return
+    _feuer_am_stueck -= FEUER_STACK_S
+    _kill_frist, _kill_takt = KILL_STACK_FRIST_S, 0.0   # Dauerfeuer haelt den Stapel
+    if _feuer_stacks >= EILE_FEUER_MAX or _kill_stacks + _feuer_stacks >= EILE_MAX:
+        return
+    _feuer_stacks += 1
+    _kill_stacks_anwenden("Dauerfeuer")
+    logging.info(f"[ZB] Haste Stacks: Dauerfeuer +1 -> Kill {_kill_stacks} + Feuer {_feuer_stacks} - {_eile_werte()}")
 
 
 def kill_stacks_festhalten(grund: str) -> None:
-    """Deja-vu beim Zuenden: die Verfallsfrist beginnt von vorn."""
+    """Erinnerung beim Zuenden: die Verfallsfrist beginnt von vorn."""
     global _kill_frist, _kill_takt
     if _kill_stacks > 0:
         _kill_frist, _kill_takt = KILL_STACK_FRIST_S, 0.0
@@ -3071,8 +3462,9 @@ def kill_stacks_festhalten(grund: str) -> None:
 
 
 def _kill_stack_tick(dt: float) -> None:
-    global _kill_stacks, _kill_frist, _kill_takt
-    if _kill_stacks <= 0:
+    global _kill_stacks, _kill_frist, _kill_takt, _feuer_stacks
+    _feuer_stack_tick(dt)
+    if _kill_stacks + _feuer_stacks <= 0:
         return
     if _kill_frist > 0:
         _kill_frist -= dt
@@ -3081,10 +3473,13 @@ def _kill_stack_tick(dt: float) -> None:
     if _kill_takt < KILL_STACK_TAKT_S:
         return
     _kill_takt = 0.0
-    _kill_stacks -= 1
+    if _feuer_stacks > 0:
+        _feuer_stacks -= 1
+    else:
+        _kill_stacks -= 1
     _kill_stacks_anwenden("Verfall")
-    if _kill_stacks % 10 == 0:
-        logging.info(f"[ZB] Kill-Stacks verfallen: noch {_kill_stacks}")
+    if _kill_stacks + _feuer_stacks in (0, 10):
+        logging.info(f"[ZB] Kill-Stacks verfallen: noch Kill {_kill_stacks} + Feuer {_feuer_stacks} - {_eile_werte()}")
 
 
 def kills_start() -> None:
@@ -3103,39 +3498,10 @@ def mechanik_kills_gezuendet() -> None:
     logging.info(f"[ZB] Wiederkehr: {_kills} Kill(s) seit dem Legen, Rang {rang}")
 
 
-# --- Handgriff 3b: Deja-vu - das Zuenden frischt alle Kill Skills auf (v0.69/v0.70) -------------
-#
-# ERSTER WEG, IM SPIEL WIDERLEGT (v0.69): SkillEffectManager.NotifySkillEvent(11 = SEVT_KilledEnemy,
-# pc, None, None, None, None). Der Aufruf geht fehlerfrei durch und bewirkt NICHTS - sieben Versuche
-# von Hand und einer beim Zuenden, jedes Mal blieben alle drei Kill-Skills aus.
-#
-# Warum, sagt der Dump: unsere Vorlage GD_Assassin_Skills.Sniping.Killer hat **kein KillEvents-Feld**,
-# nur SkillType=SKILL_TYPE_Kill und DurationType=DURATION_Infinite. Die KillEvents(n).EventType=SKE_*
-# aus dem Datenpaket gehoeren Schild- und Artefakt-Skills (Roid_Shield_Skill_*) - ein anderer
-# Mechanismus, und nur der haengt an NotifySkillEvent. Charakter-Kill-Skills schaltet das Spiel hart.
-#
-# ZWEITER WEG (v0.70): WillowPlayerController.UpdateKillSkills(bEnable, ...) - stand seit Spike E in
-# docs/spikes.md ("UpdateKillSkills und ForceKillSkillsOff fuer Kill Skills") und ist dort uebersehen
-# worden. Die weiteren Parameter sind unbekannt, darum ruft mechanik_dejavu erst mit einem Argument
-# und loggt bei Fehlschlag die Signatur gleich mit - ein Testlauf reicht so in jedem Fall.
+# Kill Skills des Moduls sind Stack-Skills (stapel_setzen). Den harten Kill-Skill-Weg des Spiels
+# (UpdateKillSkills, v0.70) und NotifySkillEvent (v0.69, wirkungslos) beschreibt docs/spikes.md, Spike E.
 
-SEVT_KILLED_ENEMY = 11  # ESkillEventType, im Spiel abgelesen (v0.69). Bleibt dokumentiert: der Wert
-                        # stimmt, nur traegt dieser Weg unsere Kill-Skills nicht.
-KILL_SKILLS = ("DejaVu", "Wiederholung", "Vorstoss")  # unsere drei Skills der Bauart KILL
-
-
-def _kill_skills_zustand() -> str:
-    """an/aus der drei Kill-Skills als Zeile - die Messgroesse fuer Deja-vu (Regel 3).
-
-    Der Rang steht mit dabei (v0.70): ein Skill ohne Punkte kann gar nicht angehen. Ohne diese Zahl
-    sind "bleibt aus, weil kaputt" und "bleibt aus, weil 0 Punkte" nicht zu unterscheiden - genau
-    die Art Messung, vor der Falle 2 warnt.
-    """
-    teile = []
-    for n in KILL_SKILLS:
-        d = skill_def(n)
-        teile.append(f"{n}={'an' if d is not None and skill_aktiv(d) else 'aus'}(R{skill_rang(n)})")
-    return ", ".join(teile)
+KILL_SKILLS = ("Eile",)  # v1.61: Haste Stacks; bis v1.55 DejaVu, Wiederholung, Vorstoss
 
 
 # =================================================================================================
@@ -3237,6 +3603,300 @@ def _abstand_uu(a: Any, b: Any) -> float:
     return math.sqrt((a.X - b.X) ** 2 + (a.Y - b.Y) ** 2 + (a.Z - b.Z) ** 2)
 
 
+# --- Time Freeze (Hindsight T6, Capstone) - Spike v1.70/v1.70b, Skill v1.71 ---------------------------
+# Spike (Testbefehl `zb frieren ki|tick|pop|halten|aus [RADIUS_M]`, gemessen 2026-10-11):
+#   bIsCriticalActor aus dem FL4K-Projekt sass an der Spawn-FACTORY, fuer lebende Gegner taugt es nicht.
+#   ki   (WillowMind.bTickIsDisabled + WillowAIComponent.bTickInGame=False): greifen nicht mehr an, laufen
+#        aber ihren Weg weiter (bis 24 m in 5 s).
+#   tick (dazu WillowAIPawn.bTickIsDisabled): genauso, die Eigenschaft allein haelt nichts an.
+#   pop  (WillowMind.bDisabledDueToPopulationIrrelevance): keine Wirkung.
+#   halten = ki + jeden Frame Location zurueck, Velocity/Acceleration 0, Mesh.bPauseAnims: alle stehen wie
+#        Statuen (0,00 m in 5 s, Gegenfall lief), nach `aus` kaempfen sie normal weiter.
+# Nur Eigenschaften an fremden Objekten, keine Funktionsaufrufe (CLAUDE.md). Keine UObject-Huellen merken,
+# nur Pfade.
+ZEITSTILLSTAND_RADIUS_M = 25.0
+_frieren: dict[str, dict] = {}            # Pawn-Pfad -> {"mind","komp","ort",alte Werte,"variante","skill"}
+_frieren_messung: list[list] = []         # [Restzeit, Etikett] - nur fuer den Testbefehl
+_frieren_gegenfall: tuple | None = None   # (Pfad, (x,y,z))
+_auftau_offen: list[tuple[str, float]] = []   # (Pawn-Pfad, Bonus-Schaden) - im naechsten Tick austeilen
+
+
+def _frieren_teile(p: UObject) -> tuple[UObject | None, UObject | None]:
+    mind = getattr(p, "Controller", None)
+    komp = getattr(mind, "AIComponent", None) if mind is not None else None
+    return mind, komp
+
+
+def _frieren_finden(cls: str, pfad: str | None) -> UObject | None:
+    if not pfad:
+        return None
+    try:
+        return unrealsdk.find_object(cls, pfad)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _frieren_einer(p: UObject, variante: str, skill: bool) -> dict:
+    mind, komp = _frieren_teile(p)
+    l = p.Location
+    e = {"ort": (l.X, l.Y, l.Z), "mind": mind._path_name() if mind is not None else None,
+         "komp": komp._path_name() if komp is not None else None, "variante": variante,
+         "leben": _leben(p), "skill": skill}
+    if variante in ("ki", "tick", "halten"):
+        if mind is not None:
+            e["mind_tick"] = bool(mind.bTickIsDisabled)
+            mind.bTickIsDisabled = True
+        if komp is not None:
+            e["komp_tick"] = bool(komp.bTickInGame)
+            komp.bTickInGame = False
+    if variante == "tick":
+        e["pawn_tick"] = bool(p.bTickIsDisabled)
+        p.bTickIsDisabled = True
+    if variante == "halten":
+        mesh = getattr(p, "Mesh", None)
+        if mesh is not None:
+            e["anim"] = bool(mesh.bPauseAnims)
+            mesh.bPauseAnims = True
+    if variante == "pop" and mind is not None:
+        e["pop"] = bool(mind.bDisabledDueToPopulationIrrelevance)
+        mind.bDisabledDueToPopulationIrrelevance = True
+    _frieren[p._path_name()] = e
+    return e
+
+
+def _auftauen(pfad: str) -> bool:
+    e = _frieren.pop(pfad, None)
+    if e is None:
+        return False
+    p = _frieren_finden("WillowAIPawn", pfad)
+    mind = _frieren_finden("WillowMind", e["mind"]) or (getattr(p, "Controller", None) if p is not None else None)
+    komp = _frieren_finden("WillowAIComponent", e["komp"])
+    if "pawn_tick" in e and p is not None:
+        p.bTickIsDisabled = e["pawn_tick"]
+    if "mind_tick" in e and mind is not None:
+        mind.bTickIsDisabled = e["mind_tick"]
+    if "komp_tick" in e and komp is not None:
+        komp.bTickInGame = e["komp_tick"]
+    if "pop" in e and mind is not None:
+        mind.bDisabledDueToPopulationIrrelevance = e["pop"]
+    if "anim" in e and p is not None and getattr(p, "Mesh", None) is not None:
+        p.Mesh.bPauseAnims = e["anim"]
+    return True
+
+
+def frieren(variante: str, radius_m: float) -> None:
+    """zb frieren - der Testbefehl aus dem Spike (um den Spieler)."""
+    global _frieren_gegenfall
+    pc = local_pc()
+    if pc is None or pc.Pawn is None:
+        return
+    if variante == "aus":
+        frieren_aus("Befehl")
+        return
+    if _frieren:
+        frieren_aus("neuer Versuch")
+    o = pc.Pawn.Location
+    _frieren_gegenfall = None
+    for p in _gegner_lebend():
+        try:
+            d = _abstand_uu(p.Location, o)
+            if d > radius_m * UU_JE_METER_A:
+                if _frieren_gegenfall is None:
+                    l = p.Location
+                    _frieren_gegenfall = (p._path_name(), (l.X, l.Y, l.Z))
+                continue
+            e = _frieren_einer(p, variante, False)
+            logging.info(f"[ZB] frieren ({variante}): {p.Name} auf {d / UU_JE_METER_A:.1f} m, Leben {e['leben']:.0f}")
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] frieren: {ex}")
+    logging.info(f"[ZB] frieren ({variante}): {len(_frieren)} Gegner im Umkreis von {radius_m:.0f} m,"
+                 f" Gegenfall {_frieren_gegenfall[0].rsplit('.', 1)[-1] if _frieren_gegenfall else 'keiner'}")
+    _frieren_messung[:] = [[2.0, "2 s"], [5.0, "5 s"]]
+
+
+def frieren_aus(grund: str) -> None:
+    n = 0
+    for pfad in list(_frieren):
+        try:
+            n += _auftauen(pfad)
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] frieren aus: {ex}")
+    _frieren.clear()
+    _frieren_messung.clear()
+    # _auftau_offen bleibt: Sprengsatz trifft beim Zuenden noch Gefrorene, der Bonus kommt einen Tick spaeter
+    if n:
+        logging.info(f"[ZB] frieren aus ({grund}): {n} Gegner aufgetaut")
+
+
+def mechanik_zeitstillstand(x: float, y: float, z: float) -> None:
+    """v1.71: bei der Landung der Bombe alle Gegner im Umkreis einfrieren, Bosse eingeschlossen. Wer
+    spaeter in den Kreis laeuft, bleibt frei - es wird nur einmal eingefroren."""
+    if skill_rang("Zeitstillstand") <= 0:
+        return
+    if _frieren:
+        frieren_aus("neue Bombe")
+    mitte = _vec(x, y, z)
+    for p in _gegner_lebend():
+        try:
+            if _abstand_uu(p.Location, mitte) <= ZEITSTILLSTAND_RADIUS_M * UU_JE_METER_A:
+                _frieren_einer(p, "halten", True)
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Time Freeze: {ex}")
+    logging.info(f"[ZB] Time Freeze: {len(_frieren)} Gegner im Umkreis von {ZEITSTILLSTAND_RADIUS_M:.0f} m eingefroren")
+
+
+# --- Guaranteed Crits (Rewind T3, 5 Raenge) - v1.72 -------------------------------------------------
+# Ob ein Treffer kritisch ist, entscheidet die Trefferzone: BodyHitRegionDefinition.bCriticalHit (Dump:
+# 288 von 1105 Zonen True, z. B. GD_GoliathShared...HitRegion_Head). Das sind Datenobjekte, keine Welt-Actors -
+# Eigenschaften schreiben ist unkritisch. Nach dem Zuenden fuer 1 s je Rang alle geladenen Zonen kritisch,
+# danach genau die geaenderten zurueck. GD_PlayerShared bleibt aussen vor (Treffer auf Spieler).
+# NEBENWIRKUNG (bewusst): auch Koop-Partner treffen in dieser Zeit kritisch. Zonen, die erst waehrend des
+# Fensters geladen werden, bleiben normal.
+KRIT_JE_RANG_S = 1.0
+_krit_alt: list[str] = []   # Pfade der Zonen, die wir auf True gesetzt haben
+_krit_rest = 0.0
+
+
+def krit_an(sekunden: float, grund: str) -> None:
+    global _krit_rest
+    if not _krit_alt:
+        for r in unrealsdk.find_all("BodyHitRegionDefinition", exact=False):
+            try:
+                pfad = r._path_name()
+                if "Default__" in pfad or pfad.startswith("GD_PlayerShared."):
+                    continue
+                if not bool(r.bCriticalHit):
+                    r.bCriticalHit = True
+                    _krit_alt.append(pfad)
+            except Exception:  # noqa: BLE001
+                continue
+    _krit_rest = max(_krit_rest, sekunden)
+    logging.info(f"[ZB] Guaranteed Crits ({grund}): {len(_krit_alt)} Trefferzonen kritisch fuer {_krit_rest:.1f} s")
+
+
+def krit_aus(grund: str) -> None:
+    global _krit_rest
+    _krit_rest = 0.0
+    n = 0
+    for pfad in _krit_alt:
+        r = _frieren_finden("BodyHitRegionDefinition", pfad)
+        if r is not None:
+            try:
+                r.bCriticalHit = False
+                n += 1
+            except Exception:  # noqa: BLE001
+                pass
+    if _krit_alt:
+        logging.info(f"[ZB] Guaranteed Crits aus ({grund}): {n} von {len(_krit_alt)} Trefferzonen zurueck")
+    _krit_alt.clear()
+
+
+def _krit_tick(dt: float) -> None:
+    global _krit_rest
+    if _krit_rest <= 0:
+        return
+    _krit_rest -= dt
+    if _krit_rest <= 0:
+        krit_aus("Zeit um")
+
+
+def mechanik_sichere_krits() -> None:
+    rang = skill_rang("SichereKrits")
+    if rang > 0:
+        krit_an(KRIT_JE_RANG_S * rang, f"gezuendet, Rang {rang}")
+
+
+def zeitstillstand_treffer(obj: UObject, args: Any, verlust: float) -> None:
+    """Aus dem TakeDamage-POST: der erste Treffer taut auf. Kam er vom Spieler, gibt es denselben Schaden
+    noch einmal - aber erst im naechsten Tick (kein TakeDamage mitten in TakeDamage, s. Paket B)."""
+    pfad = obj._path_name()
+    e = _frieren.get(pfad)
+    if e is None or not e.get("skill"):
+        return
+    if verlust <= 0:   # Schild hat geschluckt - dann zaehlt der Parameter (wie bei Paradoxon)
+        try:
+            verlust = float(_arg(args, "Damage", "DamageAmount") or 0.0)
+        except Exception:  # noqa: BLE001
+            verlust = 0.0
+    if verlust <= 0:
+        # v1.71b: Treffer ohne Schaden tauen NICHT auf. Im Test 2026-10-11 tauten zwei Gegner 0,6 s nach der
+        # Landung mit 0 Schaden auf - vermutlich ein eigener Effekt (Behavior_Explode mit Schaden 0).
+        if not e.get("null_gemeldet"):
+            e["null_gemeldet"] = True
+            logging.info(f"[ZB] Time Freeze: {obj.Name} mit 0 Schaden getroffen - bleibt gefroren")
+        return
+    _auftauen(pfad)
+    pc = local_pc()
+    urheber = _arg(args, "InstigatedBy", "EventInstigator")
+    vom_spieler = False
+    try:
+        if pc is not None and urheber is not None:
+            upfad = urheber._path_name()
+            vom_spieler = upfad == pc._path_name() or (pc.Pawn is not None and upfad == pc.Pawn._path_name())
+    except Exception:  # noqa: BLE001
+        pass
+    if vom_spieler and _leben(obj) > 0:
+        _auftau_offen.append((pfad, verlust))
+    logging.info(f"[ZB] Time Freeze: {obj.Name} getroffen ({verlust:.0f}, {'Spieler' if vom_spieler else 'fremd'}) - aufgetaut,"
+                 f" {len(_frieren)} bleiben gefroren")
+
+
+def _frieren_tick(dt: float) -> None:
+    global _eigen
+    if _auftau_offen:
+        offen = list(_auftau_offen)
+        _auftau_offen.clear()
+        pc = local_pc()
+        for pfad, bonus in offen:
+            p = _frieren_finden("WillowAIPawn", pfad)
+            if p is None or pc is None or _leben(p) <= 0:
+                continue
+            _eigen = True
+            try:
+                logging.info(f"[ZB] Time Freeze: doppelter Schaden an {p.Name}: {_treffer(p, pc, bonus, 0.0, p.Location, False)}")
+            finally:
+                _eigen = False
+    for pfad, e in list(_frieren.items()):
+        if e.get("variante") != "halten":
+            continue
+        p = _frieren_finden("WillowAIPawn", pfad)
+        if p is None:
+            continue
+        if e.get("skill") and _leben(p) <= 0:
+            _auftauen(pfad)   # tot (z. B. Brand) - die Leiche nicht festhalten
+            continue
+        try:
+            x, y, z = e["ort"]
+            p.Velocity = _vec(0.0, 0.0, 0.0)
+            p.Acceleration = _vec(0.0, 0.0, 0.0)
+            p.Location = _vec(x, y, z)
+        except Exception as ex:  # noqa: BLE001
+            if not e.get("fehler"):
+                e["fehler"] = True
+                logging.error(f"[ZB] frieren halten: {ex}")
+    if not _frieren_messung:
+        return
+    for m in _frieren_messung:
+        m[0] -= dt
+    faellig = [m for m in _frieren_messung if m[0] <= 0]
+    _frieren_messung[:] = [m for m in _frieren_messung if m[0] > 0]
+    for _, etikett in faellig:
+        for pfad, e in _frieren.items():
+            p = _frieren_finden("WillowAIPawn", pfad)
+            if p is None:
+                logging.info(f"[ZB] frieren nach {etikett}: {pfad.rsplit('.', 1)[-1]} nicht mehr da")
+                continue
+            l, (x, y, z) = p.Location, e["ort"]
+            weg = math.sqrt((l.X - x) ** 2 + (l.Y - y) ** 2 + (l.Z - z) ** 2) / UU_JE_METER_A
+            logging.info(f"[ZB] frieren nach {etikett}: {p.Name} bewegt {weg:.2f} m, Leben {e['leben']:.0f} -> {_leben(p):.0f}")
+        if _frieren_gegenfall is not None:
+            p = _frieren_finden("WillowAIPawn", _frieren_gegenfall[0])
+            if p is not None:
+                l, (x, y, z) = p.Location, _frieren_gegenfall[1]
+                weg = math.sqrt((l.X - x) ** 2 + (l.Y - y) ** 2 + (l.Z - z) ** 2) / UU_JE_METER_A
+                logging.info(f"[ZB] frieren nach {etikett}: Gegenfall {p.Name} (nicht gefroren) bewegt {weg:.2f} m")
+
+
 def _schaden_basis(pawn: UObject) -> float:
     """Der Waffenschaden des Spielers - der eine Teil der Schadensformel (s. _schaden_gegen)."""
     try:
@@ -3309,139 +3969,6 @@ def _treffer(ziel: UObject, pc: UObject, schaden: float, stoss_uu: float, mitte:
     return ", ".join(teile)
 
 
-def stoss_versuch(kraft: float, art: int, radius_m: float = 8.0) -> None:
-    """zb stoss [KRAFT] [ART] - Rueckstoss-Varianten an den Zielen ringsum ausprobieren (v0.80).
-
-    v0.79 ist durchgefallen: AddImpulse laeuft ohne Fehler, die Ziele rutschen trotzdem nur rund
-    einen Meter. Verdacht: die Parameterfolge ist GERATEN, und wenn bVelChange nicht als True
-    ankommt, rechnet die Engine 542 als echten Impuls gegen die Masse des Koerpers - bei rund 100 kg
-    sind das 5 Einheiten je Sekunde, was genau wie "faellt um" aussieht.
-
-    Statt weiter zu raten und jedes Mal neu auszuliefern: durchprobieren. Die Nachmessung sagt nach
-    einer Sekunde, welche Art wie weit getragen hat.
-      1  Impuls aufs Mesh, bVelChange=True   (der Weg aus v0.79)
-      2  Impuls aufs Mesh, bVelChange=False  (echter Impuls - braucht viel groessere Zahlen)
-      3  nur Actor.Velocity + PHYS_Falling   (ohne Ragdoll-Umweg)
-      4  Mesh aufwecken, dann Impuls         (Verdacht: der Koerper schlaeft)
-      5  alles zusammen
-      6  NavMesh loesen, dann Falling + Velocity   (fuer Bodengegner, v0.81)
-      7  TakeDamage mit Momentum                   (BL2s eigener Weg, wie Nova-Schilde)
-      8  Ragdoll erzwingen + Radial-Impuls         (SetDyingPhysics, v0.82)
-    """
-    pc = local_pc()
-    pawn = pc.Pawn if pc else None
-    if pawn is None:
-        logging.error("[ZB] stoss: kein Spieler-Pawn")
-        return
-    logging.info(f"[ZB] stoss: Art {art}, Kraft {kraft:.0f}, Radius {radius_m:.0f} m")
-    mitte = pawn.Location
-    n = 0
-    for ziel in _gegner_lebend():
-        try:
-            d = _abstand_uu(ziel.Location, mitte)
-        except Exception:  # noqa: BLE001
-            continue
-        if d > radius_m * UU_JE_METER_A:
-            continue
-        n += 1
-        o = ziel.Location
-        r = _vec(o.X - mitte.X, o.Y - mitte.Y, o.Z - mitte.Z)
-        laenge = max(1.0, math.sqrt(r.X ** 2 + r.Y ** 2 + r.Z ** 2))
-        waagerecht = kraft * 0.707
-        schub = _vec(r.X / laenge * waagerecht, r.Y / laenge * waagerecht, kraft * 0.707)
-        teile = []
-        mesh = None
-        try:
-            mesh = ziel.Mesh
-        except Exception as ex:  # noqa: BLE001
-            teile.append(f"kein Mesh: {ex}")
-        if art in (4, 5) and mesh is not None:
-            try:
-                mesh.WakeRigidBody("")  # Name GERATEN - die Signatur steht im Fehlerfall im Log
-                teile.append("geweckt")
-            except Exception as ex:  # noqa: BLE001
-                teile.append(f"WakeRigidBody: {ex}")
-        if art in (1, 2, 4, 5) and mesh is not None:
-            vel = art != 2
-            try:
-                mesh.AddImpulse(schub, o, "", vel)
-                teile.append(f"Impuls(bVelChange={vel})")
-            except Exception as ex:  # noqa: BLE001
-                teile.append(f"AddImpulse: {ex}")
-        if art in (3, 5):
-            try:
-                ziel.SetPhysics(2)
-                ziel.Velocity = schub
-                teile.append("Velocity+Falling")
-            except Exception as ex:  # noqa: BLE001
-                teile.append(f"Velocity: {ex}")
-        if art == 6:
-            # v0.80 gemessen: fliegende Ziele (Physics 4) fliegen mit Art 3 vier bis fuenf Meter,
-            # Bodengegner keinen. Bei denen steht auch nach dem Stoss wieder Physics 12 =
-            # PHYS_NavMeshWalking - das Navigationsnetz haelt sie fest und macht jede Geschwindigkeit
-            # zunichte. Hier also erst das NavMesh loesen. Beide Namen sind GERATEN (UE3 kennt
-            # SetNavMeshWalking; die Eigenschaft ist der zweite Versuch), darum einzeln geloggt.
-            for name, tu in (("SetNavMeshWalking(False)", lambda o: o.SetNavMeshWalking(False)),
-                             ("bUseNavMeshWalking=False", lambda o: setattr(o, "bUseNavMeshWalking", False)),
-                             ("bCollideWorld=True", lambda o: setattr(o, "bCollideWorld", True))):
-                try:
-                    tu(ziel)
-                    teile.append(name)
-                except Exception as ex:  # noqa: BLE001
-                    teile.append(f"{name}: {ex}")
-            try:
-                ziel.SetPhysics(2)
-                ziel.Velocity = schub
-                teile.append(f"Falling+Velocity (Physics jetzt {ziel.Physics})")
-            except Exception as ex:  # noqa: BLE001
-                teile.append(f"Velocity: {ex}")
-        if art == 8:
-            # v0.81: die Signatur von AddImpulse war richtig (im Spiel abgelesen), nur simuliert die
-            # Engine bei Physics 12 gar kein Skelett - ein Mesh-Impuls trifft dann nichts. Also den
-            # Koerper erst in die Ragdoll-Physik werfen (SetDyingPhysics - Name aus 'zb funcs', was
-            # er wirklich tut, ist eine Vermutung), aufwecken und mit dem Explosionsimpuls schieben.
-            try:
-                ziel.SetDyingPhysics()
-                teile.append(f"SetDyingPhysics (Physics jetzt {ziel.Physics})")
-            except Exception as ex:  # noqa: BLE001
-                teile.append(f"SetDyingPhysics: {ex}")
-            if mesh is not None:
-                try:
-                    mesh.WakeRigidBody("")
-                    # AddRadialImpulse(Origin, Radius, Strength, Falloff, bVelChange) - im Spiel
-                    # abgelesen (v0.81). Falloff 0 = konstant ueber den ganzen Radius.
-                    mesh.AddRadialImpulse(mitte, radius_m * UU_JE_METER_A, kraft, 0, True)
-                    teile.append("RadialImpuls")
-                except Exception as ex:  # noqa: BLE001
-                    teile.append(f"AddRadialImpulse: {ex}")
-        if art == 7:
-            # BL2s eigener Weg: der Momentum-Parameter von TakeDamage. So schleudern Nova-Schilde
-            # und Explosionen - mit DamageType, nicht mit None wie bisher.
-            # v0.81: WillowDamageTypeDefinition wurde abgelehnt ("Class does not inherit from
-            # DamageType") - der Parameter will eine echte DamageType-KLASSE. Welche es in BL2 gibt,
-            # ist unbekannt, also der Reihe nach probieren und die erste nehmen, die es gibt.
-            dmg_klasse = None
-            for kandidat in ("WillowDamageTypeExplosive", "DmgType_Explosion", "DmgType_Crushed",
-                             "DmgType_Fell", "WillowDamageType", "DamageType"):
-                try:
-                    dmg_klasse = unrealsdk.find_class(kandidat)
-                    teile.append(f"DamageType={kandidat}")
-                    break
-                except Exception:  # noqa: BLE001
-                    continue
-            try:
-                hit = unrealsdk.make_struct("TraceHitInfo")
-                ziel.TakeDamage(1.0, pc, o, schub, dmg_klasse, hit, None, None)
-                teile.append("TakeDamage mit Momentum")
-            except Exception as ex:  # noqa: BLE001
-                teile.append(f"TakeDamage: {ex}")
-        _flug_merken(ziel)
-        logging.info(f"[ZB] stoss: {ziel.Name} auf {d / UU_JE_METER_A:.1f} m, Physics {ziel.Physics} -> {', '.join(teile)}")
-    logging.info(f"[ZB] stoss: {n} Ziel(e) - Weiten kommen in einer Sekunde")
-    if n == 0:
-        logging.info("[ZB] stoss: niemand in Reichweite ('zb ziel 3' spawnt welche)")
-
-
 def _stoss_geben(ziel: UObject, richtung: Any, laenge: float, stoss_uu: float, ort: Any) -> str:
     """Ein Ziel wegschleudern.
 
@@ -3456,7 +3983,7 @@ def _stoss_geben(ziel: UObject, richtung: Any, laenge: float, stoss_uu: float, o
     |                                                                                        |
     | >>> VOR JEDEM NEUEN VERSUCH: docs/spikes.md, Abschnitt "Rueckstoss an Gegnern". <<<    |
     | Dort stehen alle Messwerte, alle Sackgassen und der einzige noch offene Weg            |
-    | (BL2s Singularity-Granaten ueber Behavior_SetPhysics). Zum Ausprobieren: zb stoss.     |
+    | (BL2s Singularity-Granaten ueber Behavior_SetPhysics). zb stoss ist seit v1.55 ausgebaut.|
     +---------------------------------------------------------------------------------------+
 
     Der Mesh-Impuls bleibt drin, weil er nichts kostet und bei ragdollenden Zielen der einzige Weg
@@ -3775,14 +4302,10 @@ def ammo_zeigen() -> None:
 
 # --- Erinnerung (Baum 1, Tier 4, Rang 1) - v0.71 -----------------------------------------------
 #
-# "Der Anker speichert Kill-Skill-Zustaende; beim Zuenden sind sie wieder da." Abgrenzung zu
-# Deja-vu: Deja-vu frischt IMMER auf, Erinnerung stellt nur her, was beim LEGEN lief. Wer beides
-# hat, merkt keinen Unterschied - wer nur Erinnerung hat, rettet seine laufenden Kill Skills ueber
-# den Sprung. Gleiche Technik (UpdateKillSkills, v0.70 gemessen), anderer Ausloeser.
-#
-# Die "Stacks" aus dem Entwurf (docs/skills.md) bleiben vorerst aussen vor: Gespannte Zeit und
-# Abstand sind unsere eigenen und enden mit dem Zuenden per Design; fremde Stack-Skills muessten
-# einzeln erfasst werden. Steht im Skilltext nicht, also kein Bruch - aber hier notiert.
+# "Der Anker speichert deine Stacks; beim Zuenden sind sie wieder da." Seit v1.13 die Kill-Stacks
+# (seit v1.61: Haste Stacks, nur die aus Kills): ist der Stapel beim Zuenden kleiner als beim Legen,
+# kommt der alte zurueck, und die Verfallsfrist beginnt neu. Gespannte Zeit endet mit dem Zuenden
+# per Design.
 
 _erinnerung_stacks = 0  # v1.13: Kill-Stacks beim Legen
 
@@ -3804,7 +4327,7 @@ def mechanik_erinnerung_gezuendet() -> bool:
         return False
     vorher = _kill_stacks
     if _erinnerung_stacks > _kill_stacks:
-        _kill_stacks = _erinnerung_stacks
+        _kill_stacks = min(_erinnerung_stacks, EILE_MAX - _feuer_stacks)
         _kill_stacks_anwenden("Erinnerung")
     kill_stacks_festhalten("Erinnerung")
     logging.info(f"[ZB] Erinnerung: Kill-Stacks {vorher} -> {_kill_stacks} (beim Legen {_erinnerung_stacks})")
@@ -3818,15 +4341,7 @@ NACHHALL_RADIUS_M = 6.0
 # gerechnet statt geschaetzt: bei 45 Grad ist R = v^2 / g, also v = sqrt(g * R). Mit g = 980 uu/s^2
 # (UE3-Standard) und R = 300 uu sind das rund 542 uu/s, die _treffer in zwei gleiche Anteile
 # waagerecht und senkrecht zerlegt. Stimmt die Schwerkraft in BL2 nicht, sagt es die Nachmessung.
-NACHHALL_WEITE_M = 3.0
-SCHWERKRAFT_UU = 980.0
-NACHHALL_STOSS_UU = math.sqrt(SCHWERKRAFT_UU * NACHHALL_WEITE_M * 100.0)  # seit v1.13 ungenutzt (Rueckstoss geparkt)
 NACHHALL_FAKTOR = 2.0            # v1.13: x Granatenschaden der Schockwelle
-RUECKSPRUNG_JE_RANG = 0.20      # Rueckenwind (v0.97): +20 % Feuerrate/Nachladetempo je Rang
-RUECKSPRUNG_VOLL_M = 50.0       # ab dieser Entfernung zum Anker volle Wirkung, darunter linear
-RUECKSPRUNG_DAUER_S = 10.0      # fest, skaliert nicht mit dem Rang (Nutzerwunsch)
-ZEITSPRUNG_BREITE_M = 4.0        # halber Korridor links/rechts der Linie
-ZEITSPRUNG_UNVERWUNDBAR_S = 1.0  # seit v1.12 ueber immunitaet()
 REINIGUNG_IMMUN_S = 2.0
 RUECKERSTATTUNG_JE_RANG = 0.20
 
@@ -3922,6 +4437,143 @@ def mechanik_rueckerstattung(pc: UObject, pawn: UObject) -> bool:
     return True
 
 
+# v1.57: Refill (Overclock T1, docs/skills.md 9.2). Jeder Kill fuellt 5 % je Rang des Magazins auf,
+# ohne die Reserve anzutasten. ReloadCnt = Patronen IM Magazin (Spike B, docs/spikes.md). Der Pool der
+# Waffe enthaelt das Magazin mit (BO2-Projekt, Test 7 bestaetigt: Reserve = Pool - ReloadCnt) - deshalb
+# waechst der Pool um dieselbe Zahl, sonst ginge das Auffuellen doch von der Reserve ab. Pool schreiben
+# ist belegt (Volle Rueckerstattung). VERMUTUNG: das Spiel kappt den Pool an seinem Maximum - dann
+# kommt die Differenz aus der (vollen) Reserve; das Log zeigt es (Pool Soll/Ist).
+NACHFUELLEN_JE_RANG = 0.05
+
+
+def mechanik_nachfuellen(pc: UObject) -> bool:
+    rang = skill_rang("Nachfuellen")
+    if rang <= 0:
+        return False
+    pawn = pc.Pawn
+    weapon = pawn.Weapon if pawn is not None else None
+    if weapon is None:
+        logging.info("[ZB] Refill: keine Waffe in der Hand")
+        return False
+    mag, groesse = int(weapon.ReloadCnt), int(weapon.ClipSize)
+    soll = max(1, round(groesse * NACHFUELLEN_JE_RANG * rang))
+    n = min(soll, groesse - mag)
+    if n <= 0:
+        logging.info(f"[ZB] Refill: Magazin voll ({mag}/{groesse})")
+        return False
+    pool = weapon.AmmoPool.Data
+    pool_vorher = float(pool.CurrentValue) if pool is not None else -1.0
+    if pool is not None:
+        pool.CurrentValue = pool_vorher + n
+    weapon.ReloadCnt = mag + n
+    pool_nachher = float(pool.CurrentValue) if pool is not None else -1.0
+    logging.info(f"[ZB] Refill: Rang {rang}, +{n} (Soll {soll}) | Magazin {mag} -> {int(weapon.ReloadCnt)}/{groesse}"
+                 f" | Pool {pool_vorher:.0f} -> {pool_nachher:.0f} (Soll {pool_vorher + n:.0f})"
+                 f" | Reserve {pool_vorher - mag:.0f} -> {pool_nachher - int(weapon.ReloadCnt):.0f}")
+    return True
+
+
+# v1.58: Infinite (Overclock T5, docs/skills.md 9.2). Die ersten 5 s nach dem Wurf haelt der Tick das
+# Magazin der Waffe in der Hand voll - Rezept wie Refill (Pool und ReloadCnt um dieselbe Zahl), also
+# ohne Griff in die Reserve. Gilt fuer jede Waffe, auch nach einem Wechsel. Geschrieben wird nur, wenn
+# etwas fehlt; die Summe kommt beim Ende ins Log.
+UNENDLICH_SEKUNDEN = 5.0
+_unendlich_rest = 0.0
+_unendlich_summe = 0
+
+
+def mechanik_unendlich_gelegt() -> None:
+    global _unendlich_rest, _unendlich_summe
+    if skill_rang("Unendlich") <= 0:
+        return
+    _unendlich_rest, _unendlich_summe = UNENDLICH_SEKUNDEN, 0
+    logging.info(f"[ZB] Infinite: an fuer {UNENDLICH_SEKUNDEN:.0f} s")
+
+
+def _unendlich_tick(pc: UObject, dt: float) -> None:
+    global _unendlich_rest, _unendlich_summe
+    if _unendlich_rest <= 0:
+        return
+    _unendlich_rest -= dt
+    pawn = pc.Pawn
+    weapon = pawn.Weapon if pawn is not None else None
+    if weapon is not None:
+        mag, groesse = int(weapon.ReloadCnt), int(weapon.ClipSize)
+        n = groesse - mag
+        if n > 0:
+            pool = weapon.AmmoPool.Data
+            if pool is not None:
+                pool.CurrentValue = float(pool.CurrentValue) + n
+            weapon.ReloadCnt = groesse
+            _unendlich_summe += n
+    if _unendlich_rest <= 0:
+        reserve = "?"
+        if weapon is not None and weapon.AmmoPool.Data is not None:
+            reserve = f"{float(weapon.AmmoPool.Data.CurrentValue) - int(weapon.ReloadCnt):.0f}"
+        logging.info(f"[ZB] Infinite: aus, {_unendlich_summe} Schuss nachgefuellt | Reserve jetzt {reserve}")
+
+
+# v1.59: Borrowed Health (Rewind T2, docs/skills.md 9.2). Zuenden heilt 12 % (v1.59d, vorher 10) des Maximums je Rang;
+# die Schuld ist 125 % (bis v1.59b: das Doppelte) der tatsaechlich geheilten Menge (bei vollem Leben also keine). Der Tick
+# zahlt den Rest gleichmaessig bis zum Ende der 15 s ab (Rest / Restzeit je Frame), nie unter 1 Leben.
+# Jeder Kill tilgt 25 % der Anfangsschuld - vier Kills, und es bleibt nichts.
+GELIEHEN_JE_RANG = 0.12  # v1.59d: Nutzer, Buff von 10 %
+GELIEHEN_FAKTOR = 1.25  # v1.59c: Nutzer, das Doppelte war zu hart
+GELIEHEN_SEKUNDEN = 15.0  # v1.59b: Nutzer, 6 s zog viel zu schnell ab
+GELIEHEN_KILL_ANTEIL = 0.25
+_geliehen_rest_s = 0.0
+_geliehen_schuld = 0.0
+_geliehen_start = 0.0
+_geliehen_bezahlt = 0.0
+
+
+def mechanik_geliehen_gezuendet(pawn: UObject) -> bool:
+    global _geliehen_rest_s, _geliehen_schuld, _geliehen_start, _geliehen_bezahlt
+    rang = skill_rang("GeliehenesLeben")
+    if rang <= 0:
+        return False
+    maxi, alt = float(pawn.GetMaxHealth()), float(pawn.GetHealth())
+    pawn.SetHealth(min(maxi, alt + GELIEHEN_JE_RANG * rang * maxi))
+    neu = float(pawn.GetHealth())
+    geheilt = max(0.0, neu - alt)
+    _geliehen_schuld = _geliehen_start = GELIEHEN_FAKTOR * geheilt
+    _geliehen_rest_s = GELIEHEN_SEKUNDEN if _geliehen_schuld > 0 else 0.0
+    _geliehen_bezahlt = 0.0
+    logging.info(f"[ZB] Borrowed Health: Rang {rang}, Leben {alt:.0f} -> {neu:.0f}/{maxi:.0f} (+{geheilt:.0f}), "
+                 f"Schuld {_geliehen_schuld:.0f} ueber {GELIEHEN_SEKUNDEN:.0f} s")
+    return True
+
+
+def mechanik_geliehen_kill() -> None:
+    global _geliehen_schuld
+    if _geliehen_rest_s <= 0 or _geliehen_schuld <= 0:
+        return
+    vorher = _geliehen_schuld
+    _geliehen_schuld = max(0.0, _geliehen_schuld - GELIEHEN_KILL_ANTEIL * _geliehen_start)
+    logging.info(f"[ZB] Borrowed Health: Kill tilgt {vorher - _geliehen_schuld:.0f}, Schuld {vorher:.0f} -> {_geliehen_schuld:.0f}")
+
+
+def _geliehen_tick(pc: UObject, dt: float) -> None:
+    global _geliehen_rest_s, _geliehen_schuld, _geliehen_bezahlt
+    if _geliehen_rest_s <= 0:
+        return
+    pawn = pc.Pawn
+    anteil = min(1.0, dt / _geliehen_rest_s)
+    abzug = _geliehen_schuld * anteil
+    _geliehen_schuld -= abzug
+    _geliehen_rest_s -= dt
+    if pawn is not None and abzug > 0:
+        h = float(pawn.GetHealth())
+        ziel = max(1.0, h - abzug)
+        if ziel < h:
+            pawn.SetHealth(ziel)
+            _geliehen_bezahlt += h - ziel
+    if _geliehen_rest_s <= 0:
+        _geliehen_schuld = 0.0
+        leben = f"{float(pawn.GetHealth()):.0f}" if pawn is not None else "?"
+        logging.info(f"[ZB] Borrowed Health: Ende, {_geliehen_bezahlt:.0f} von {_geliehen_start:.0f} bezahlt, Leben jetzt {leben}")
+
+
 def mechanik_reinigung(pawn: UObject) -> bool:
     """Reinigung: Zuenden entfernt alle Statuseffekte, danach 2 s Schadensimmunitaet (seit v1.12
     ueber die versteckten Effekt-Skills ZB_Immun_A/B, s. immunitaet())."""
@@ -3945,168 +4597,127 @@ def mechanik_nachhall(pawn: UObject) -> bool:
     if skill_rang("Nachhall") <= 0:
         return False
     basis, quelle = _granaten_schaden(pawn, _granate(pawn))
-    explodieren(pawn, "Nachhall", FX_NACHHALL, basis * NACHHALL_FAKTOR, NACHHALL_RADIUS_M * UU_JE_METER_A,
-                f"{NACHHALL_FAKTOR:.0f} x {basis:.0f} ({quelle})")
+    explodieren(pawn, "Nachhall", FX_NACHHALL, basis * NACHHALL_FAKTOR * _endspurt_faktor, NACHHALL_RADIUS_M * UU_JE_METER_A,
+                f"{NACHHALL_FAKTOR:.0f} x {basis:.0f} ({quelle}) x Crunch {_endspurt_faktor:.2f}")
     return _umkreis_treffen("Nachhall", pawn.Location, NACHHALL_RADIUS_M, 0.0, 0.0, True) >= 0
 
 
-def mechanik_ruecksprung_detonation(pawn: UObject, anker: Any) -> bool:
-    """Rueckenwind (Objektname bleibt RuecksprungDetonation, v0.97): nach dem Zuenden 10 s mehr
-    Feuerrate und Nachladetempo, je weiter vom Anker, desto mehr - bis +20 % je Rang (R5 = +100 %),
-    voll ab RUECKSPRUNG_VOLL_M. Die Dauer ist fest (Effekt-Skill, dauer=10).
-
-    Umrechnung: das Spiel skaliert das INTERVALL (Fast Hands -0,05, Metal Storm -0,12 je Rang, Dump).
-    +b Tempo heisst Intervall / (1 + b), also Skalierung -b/(1+b); +100 % = -50 %, nicht -100 %
-    (das waere Intervall 0). Der Effekt-Skill rechnet -0,01 je Grad -> Grad = round(100 b/(1+b)).
-    Laeuft in zuenden() VOR dem Teleport, weil nur dort die Entfernung zum Anker messbar ist."""
-    rang = skill_rang("RuecksprungDetonation")
-    if rang <= 0:
-        return False
-    weite_m = _abstand_uu(anker, pawn.Location) / UU_JE_METER_A
-    bonus = RUECKSPRUNG_JE_RANG * rang * min(1.0, weite_m / RUECKSPRUNG_VOLL_M)
-    grad = round(100.0 * bonus / (1.0 + bonus))
-    logging.info(f"[ZB] Rueckenwind: {weite_m:.1f} m vom Anker, Rang {rang} -> +{bonus * 100:.0f} % Tempo"
-                 f" = Intervall x {1 - grad / 100:.2f} (Grad {grad}), 10 s")
-    if grad <= 0:
-        return False
-    def intervalle() -> str:
-        w = pawn.Weapon
-        if w is None:
-            return "keine Waffe"
-        try:
-            return (f"Attr FireInterval {attr_value('AttributeDefinition', A_FEUERRATE, w):.4f},"
-                    f" ReloadSpeed {attr_value('AttributeDefinition', A_NACHLADEN, w):.4f};"
-                    f" Waffe FireInterval {float(w.FireInterval):.4f} (Basis {float(w.FireIntervalBaseValue):.4f}),"
-                    f" ReloadTime {float(w.ReloadTime):.4f} (Basis {float(w.ReloadTimeBaseValue):.4f})")
-        except Exception as ex:  # noqa: BLE001
-            return f"nicht lesbar ({ex})"
-    vorher = intervalle()
-    # v0.98: Scale-Boni addieren sich auf die BASIS (CLAUDE.md). v0.97 gemessen: Grad 50 (-50 %)
-    # brachte nur x0,71, weil die Waffe schon +74 % aufs Intervall traegt. Darum je Waffe und je
-    # Attribut den Wert ausrechnen, der den AKTUELLEN Wert durch (1 + b) teilt, und mit Grad 1
-    # einschalten (Wert = BaseModifierValue). Geht das nicht, bleibt der Grad-Weg von v0.97.
-    wirkung_aus("RuecksprungDetonation")   # erst aus, damit der Istwert ohne den alten Buff gelesen wird
-    grad = _rueckenwind_werte(pawn, bonus) or grad
-    ok = wirkung_an("RuecksprungDetonation", grad)
-    logging.info(f"[ZB] Rueckenwind gemessen: vorher {vorher} | nachher {intervalle()}")
-    global _rueckenwind_probe
-    _rueckenwind_probe = (1.0, intervalle)   # eine Sekunde spaeter noch einmal (Waffenfeld traege?)
-    if ok:
-        _wirkung_uhren["RuecksprungDetonation"] = RUECKSPRUNG_DAUER_S
-        # Phase 8 (v1.04): der Buff wird sichtbar - kleine Nova am Spieler, nach der Ankunft
-        effekt("Rueckenwind", FX_NACHHALL, None, 300.0, verzoegerung=0.5)
-    return ok
+# --- Unspent Time (Overclock T6, Capstone) - v1.73, ersetzt Time Skip -------------------------------
+# Nutzer 2026-10-11: Time Skip musste man "setuppen" (Gegner auf der Linie). Neu: Jeder Gegner, den der
+# Spieler toetet, entlaedt die Zeit, die er noch gehabt haette - eine Explosion im Element der Waffe,
+# die weitere Gegner toeten kann (Kette). Interner Schluessel bleibt "Zeitsprung", damit Punkte aus
+# alten Spielstaenden uebergehen.
+# Kill-Erkennung im WillowAIPawn:TakeDamage-Hook: Leben im PRE > 0, im POST <= 0, Urheber = Spieler
+# (Controller oder Pawn - auch eigene Explosionen, so entsteht die Kette). Der Ort wird sofort gelesen,
+# explodiert wird erst im Tick (kein Schaden aus dem Hook heraus), hoechstens UNSPENT_JE_S je Sekunde.
+# Element: WillowWeapon.DefinitionData.ElementalPartDefinition (Dump: *_Elemental_Fire/_Shock/
+# _Corrosive/_Slag/_None). Ohne Element eine normale Explosion.
+UNSPENT_FAKTOR = 1.5          # x Waffenschaden (v1.73b, Nutzer; v1.73: 1.0)
+UNSPENT_RADIUS_UU = 500.0     # 5 m
+UNSPENT_JE_S = 8              # Explosionen je Sekunde hoechstens
+UNSPENT_STAU_MAX = 16         # mehr wartende verfallen (aelteste zuerst)
+UNSPENT_ELEMENT = {           # Teilname -> Schluessel in SPRENGSATZ_EXPLOSION
+    "_Fire": "Incendiary", "_Shock": "Shock", "_Corrosive": "Corrosive", "_Slag": "Slag",
+}
+UNSPENT_OHNE_ELEMENT = "GD_Explosions.explosive.Explosion_ExplosiveMaster"   # = SPRENGSATZ_ERSATZ (steht weiter unten), nicht der Nukem-Pilz
+_rang_unspent = 0
+_rang_unspent_uhr = 0.0
+_unspent_vor: dict[str, float] = {}
+_unspent_stau: list[tuple[float, float, float, str]] = []   # (x, y, z, Name des Gegners)
+_unspent_budget = float(UNSPENT_JE_S)
+_unspent_element_gemeldet = ""
 
 
-def _rueckenwind_werte(pawn: UObject, bonus: float) -> int:
-    """Effektwerte des Rueckenwind-Wirkungsskills fuer die aktuelle Waffe setzen. Gibt 1 zurueck
-    (einschalten mit Grad 1), oder 0, wenn etwas nicht lesbar war (dann gilt der alte Grad-Weg)."""
-    w = pawn.Weapon
-    wirk = skill_def("RuecksprungDetonation", wirkung=True)
-    if w is None or wirk is None:
-        return 0
-    liste = wirk.SkillEffectDefinitions
-    teile = []
-    for i, (attr, basis_feld) in enumerate(((A_FEUERRATE, "FireIntervalBaseValue"), (A_NACHLADEN, "ReloadTimeBaseValue"))):
-        jetzt = attr_value("AttributeDefinition", attr, w)
-        try:
-            basis = float(getattr(w, basis_feld))
-            jetzt = float(jetzt)
-        except Exception as ex:  # noqa: BLE001
-            logging.info(f"[ZB] Rueckenwind: {basis_feld}/{attr} nicht lesbar ({ex}) - Grad-Weg")
-            return 0
-        if basis <= 0 or jetzt <= 0:
-            return 0
-        # v0.99, gemessen an drei Punkten (v0.97/v0.98): BL2 TEILT bei negativer Summe -
-        # Wert = Basis / (1 + |Summe|), sonst Basis * (1 + Summe). Also die Gesamtsumme vorher und
-        # nachher aus Ist- und Zielwert zurueckrechnen; der Effektwert ist die Differenz.
-        def summe(v: float) -> float:
-            return v / basis - 1.0 if v >= basis else -(basis / v - 1.0)
-        ziel = jetzt / (1.0 + bonus)
-        wert = summe(ziel) - summe(jetzt)
-        try:
-            liste[i].BaseModifierValue.BaseValueConstant = wert
-            liste[i].PerGradeUpgrade.BaseValueConstant = wert
-        except Exception as ex:  # noqa: BLE001
-            logging.info(f"[ZB] Rueckenwind: Effekt {i} nicht setzbar ({ex}) - Grad-Weg")
-            return 0
-        teile.append(f"{basis_feld[:-9]} {jetzt:.4f} -> Ziel {ziel:.4f} (Skalierung {wert:+.3f} auf Basis {basis:.4f})")
-    logging.info(f"[ZB] Rueckenwind: je Waffe gerechnet: {'; '.join(teile)}")
-    return 1
+def _waffen_element(pawn: UObject) -> tuple[str, str]:
+    """(ExplosionDefinition-Pfad, Beschreibung) nach dem Element der Waffe in der Hand."""
+    global _unspent_element_gemeldet
+    teil = ""
+    try:
+        t = pawn.Weapon.DefinitionData.ElementalPartDefinition
+        teil = str(t.Name) if t is not None else ""
+    except Exception:  # noqa: BLE001
+        teil = ""
+    for endung, element in UNSPENT_ELEMENT.items():
+        if endung in teil:
+            pfad, name = SPRENGSATZ_EXPLOSION[element], element
+            break
+    else:
+        pfad, name = UNSPENT_OHNE_ELEMENT, "ohne Element"
+    if teil != _unspent_element_gemeldet:
+        _unspent_element_gemeldet = teil
+        logging.info(f"[ZB] Unspent Time: Waffen-Element '{teil or 'kein Teil'}' -> {name}")
+    return pfad, name
 
 
-_wirkung_uhren: dict[str, float] = {}   # HS-Wirkungen, die das Modul nach Ablauf selbst abschaltet
+def _unspent_vorher(obj: UObject) -> None:
+    """Aus dem TakeDamage-PRE: Leben merken (nur mit Skill)."""
+    if _rang_unspent <= 0:
+        return
+    try:
+        leben = _leben(obj)
+        if leben > 0:
+            _unspent_vor[obj._path_name()] = leben
+    except Exception:  # noqa: BLE001
+        pass
 
 
-_rueckenwind_probe: Any = None   # (Restzeit, Messfunktion)
+def _unspent_nachher(obj: UObject, args: Any) -> None:
+    """Aus dem TakeDamage-POST: war das ein Kill durch den Spieler? Dann den Ort vormerken."""
+    if _rang_unspent <= 0:
+        return
+    try:
+        vorher = _unspent_vor.pop(obj._path_name(), None)
+        if vorher is None or _leben(obj) > 0:
+            return
+        pc = local_pc()
+        urheber = _arg(args, "InstigatedBy", "EventInstigator")
+        if pc is None or urheber is None:
+            return
+        upfad = urheber._path_name()
+        if upfad != pc._path_name() and (pc.Pawn is None or upfad != pc.Pawn._path_name()):
+            return
+        o = obj.Location
+        _unspent_stau.append((o.X, o.Y, o.Z, str(obj.Name)))
+        if len(_unspent_stau) > UNSPENT_STAU_MAX:
+            del _unspent_stau[0]
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Unspent Time: Kill: {ex}")
 
 
-def _wirkung_uhren_tick(dt: float) -> None:
-    global _rueckenwind_probe
-    if _rueckenwind_probe is not None:
-        rest, messen = _rueckenwind_probe
-        if rest - dt <= 0:
-            _rueckenwind_probe = None
-            logging.info(f"[ZB] Rueckenwind nach 1 s: {messen()}")
-        else:
-            _rueckenwind_probe = (rest - dt, messen)
-    for name in list(_wirkung_uhren):
-        _wirkung_uhren[name] -= dt
-        if _wirkung_uhren[name] <= 0:
-            del _wirkung_uhren[name]
-            wirkung_aus(name)
-
-
-def mechanik_zeitsprung(pawn: UObject) -> bool:
-    """Zeitsprung (Capstone): alle Gegner auf der Linie zwischen Absprung und Ankunft werden
-    verletzt und gestaggert, Schaden nach Entfernung.
-
-    Der Korridor ist ein Zylinder um die Strecke: fuer jeden Gegner der Lotabstand zur Linie, und
-    nur wer naeher als ZEITSPRUNG_BREITE_M liegt und zwischen den Endpunkten steht, wird getroffen.
-    Die 1 s Unverwundbarkeit aus dem Entwurf fehlt noch - gleicher Grund wie bei Reinigung.
-    """
-    if skill_rang("Zeitsprung") <= 0 or _absprung is None:
-        return False
-    immunitaet(ZEITSPRUNG_UNVERWUNDBAR_S, "Zeitsprung")   # v1.12
+def _unspent_tick(dt: float) -> None:
+    global _rang_unspent, _rang_unspent_uhr, _unspent_budget
+    _rang_unspent_uhr -= dt
+    if _rang_unspent_uhr <= 0:
+        _rang_unspent_uhr = 1.0
+        _rang_unspent = skill_rang("Zeitsprung")
+        if len(_unspent_vor) > 200:   # Treffer ohne POST (z. B. Kartenwechsel) nicht ewig sammeln
+            _unspent_vor.clear()
+    _unspent_budget = min(float(UNSPENT_JE_S), _unspent_budget + UNSPENT_JE_S * dt)
+    if not _unspent_stau or _unspent_budget < 1.0:
+        return
     pc = local_pc()
-    ziel = pawn.Location
-    ax, ay, az = _absprung.X, _absprung.Y, _absprung.Z
-    dx, dy, dz = ziel.X - ax, ziel.Y - ay, ziel.Z - az
-    laenge2 = dx * dx + dy * dy + dz * dz
-    if laenge2 >= 1.0:
-        # Phase 8 (v1.00): die Blitzspur vom Absprung zur Ankunft
-        effekt_spur("Zeitsprung-Spur", _absprung, _vec(ziel.X, ziel.Y, ziel.Z))
-    if pc is None or laenge2 < 1.0:
-        logging.info("[ZB] Zeitsprung: Absprung und Ankunft liegen aufeinander")
-        return False
-    weite_m = math.sqrt(laenge2) / UU_JE_METER_A
-    schaden = _schaden_basis(pawn) * (weite_m / 10.0)
-    breite_uu = ZEITSPRUNG_BREITE_M * UU_JE_METER_A
-    n = 0
-    for g in _gegner_lebend():
-        try:
-            o = g.Location
-            # Lotfusspunkt auf der Strecke, auf [0,1] begrenzt: t=0 Absprung, t=1 Ankunft
-            t = ((o.X - ax) * dx + (o.Y - ay) * dy + (o.Z - az) * dz) / laenge2
-            if t < 0.0 or t > 1.0:
-                continue
-            lot = _vec(ax + dx * t, ay + dy * t, az + dz * t)
-            d = _abstand_uu(o, lot)
-        except Exception:  # noqa: BLE001
+    pawn = pc.Pawn if pc else None
+    if pawn is None:
+        _unspent_stau.clear()
+        return
+    pfad, element = _waffen_element(pawn)
+    schaden = _schaden_basis(pawn) * UNSPENT_FAKTOR
+    while _unspent_stau and _unspent_budget >= 1.0:
+        x, y, z, name = _unspent_stau.pop(0)
+        _unspent_budget -= 1.0
+        ort = _vec(x, y, z)
+        proj = _projektil_traeger(ort)
+        if proj is None:
             continue
-        if d > breite_uu:
-            continue
-        n += 1
-        wirkt = _schaden_gegen(g, schaden, weite_m)
-        logging.info(f"[ZB] Zeitsprung: {g.Name} {d / UU_JE_METER_A:.1f} m neben der Linie -> {_treffer(g, pc, wirkt, 200.0, lot, True)}")
-    logging.info(f"[ZB] Zeitsprung: {weite_m:.1f} m Strecke, {schaden:.0f} Schaden je Treffer, {n} Gegner auf der Linie (Unverwundbarkeit fehlt noch)")
-    return True
+        explodieren(proj, "Unspent Time", pfad, schaden, UNSPENT_RADIUS_UU,
+                    f"{name} getoetet, {element}, {UNSPENT_FAKTOR:.1f} x Waffe", traeger=proj, mitte=ort)
+        effekt("Unspent-Nova", FX_ABSPRUNG, ort, 300.0)   # blauer Zeit-Hauch zur Element-Explosion
 
 
 # =================================================================================================
-# Handgriff 4, Paket B (v0.84): Paradoxon, Vorbelastung, Zeitspur
+# Handgriff 4, Paket B (v0.84): Paradoxon, Zeitspur
 #
-# Paradoxon und Vorbelastung muessen wissen, wen der Spieler mit liegender Bombe getroffen hat und
+# Paradoxon muss wissen, wen der Spieler mit liegender Bombe getroffen hat und
 # wie hart. Dafuer ein Hook auf WillowGame.WillowAIPawn:TakeDamage (Klasse im Dump geprueft:
 # Class'WillowGame.WillowAIPawn'), PRE und POST:
 #   PRE  merkt sich das Leben des Ziels (Eigenschaft Health - v0.75 an KI-Pawns belegt)
@@ -4118,33 +4729,20 @@ def mechanik_zeitsprung(pawn: UObject) -> bool:
 #   - Der Hook feuert bei JEDEM Schaden im Spiel. Die erste Pruefung ist daher reines Python ohne
 #     Engine-Zugriff (_schaden_zaehlt), und die Raenge werden beim Legen einmal gelesen statt pro
 #     Kugel (skill_rang ist ein Funktionsaufruf).
-#   - Kein Schaden aus dem Hook heraus. Vorbelastungs-Nachschlag kommt in eine Warteschlange und wird
-#     im naechsten PlayerTick ausgeteilt - ein TakeDamage mitten in TakeDamage waere Reentrancy
-#     ins Ungewisse.
-#   - _eigen: waehrend WIR Schaden austeilen, bucht der Hook nicht und verstaerkt nicht. Sonst
-#     wuerde Paradoxon sich selbst ins Buch schreiben und Vorbelastung sich endlos nachschlagen.
-#
-# NICHT GEPRUEFT: ob TakeDamage beim echten Waffentreffer ueber diesen Weg laeuft oder nativ daran
-# vorbei (wie NotifyKilled, v0.65). Die Spur-Zeile im Hook beantwortet das beim ersten Schuss.
+#   - Kein Schaden aus dem Hook heraus - ein TakeDamage mitten in TakeDamage waere Reentrancy ins
+#     Ungewisse.
+#   - _eigen: waehrend WIR Schaden austeilen, bucht der Hook nicht. Sonst wuerde Paradoxon sich
+#     selbst ins Buch schreiben.
 
 TAKE_DAMAGE_FUNC = "WillowGame.WillowAIPawn:TakeDamage"
-PARADOXON_ANTEIL = 0.5
-VORBELASTUNG_JE_RANG = 0.05
-VORBELASTUNG_DAUER_S = 8.0
+PARADOXON_ANTEIL = 0.1   # je Rang (v1.56: 5 Raenge, bis v1.55 fest 0,5)
 ZEITSPUR_RADIUS_M = 8.0
-ZEITSPUR_DAUER_S = 3.0
-ZEITSPUR_FAKTOR = 0.5   # CustomTimeDilation: 0,5 = halbes Tempo fuer alles, was der Pawn selbst tickt
 
 _eigen = False
 _rang_para = 0
-_rang_vorb = 0
 _rang_zeitspur = 0
 _leben_vor: dict[str, float] = {}
 _buch: dict[str, float] = {}               # Paradoxon: Pfad -> Schaden mit liegender Bombe
-_markiert: set[str] = set()                # Vorbelastung: wer mit liegender Bombe getroffen wurde
-_vorbelastung_bis = 0.0                    # Spielzeit, bis zu der der Bonus gilt
-_nachschlag: dict[str, list] = {}          # Pfad -> [WeakPointer, Summe] fuer den naechsten Tick
-_verlangsamt: dict[str, list] = {}         # Pfad -> [WeakPointer, Restzeit, CTD, GroundSpeed, AirSpeed] (Originale)
 _schaden_spur_gemeldet = False             # der erste gezaehlte Treffer wird einmal geloggt
 
 
@@ -4152,9 +4750,7 @@ def _schaden_zaehlt() -> bool:
     """Die billige Vorpruefung - nur Python-Variablen, kein Engine-Zugriff."""
     if _eigen:
         return False
-    if _state == ZUSTAND_GELEGT:
-        return _rang_para > 0 or _rang_vorb > 0
-    return bool(_markiert) and _vorbelastung_bis > 0.0
+    return _state == ZUSTAND_GELEGT and _rang_para > 0
 
 
 def _arg(args: Any, *namen: str) -> Any:
@@ -4169,6 +4765,15 @@ def _arg(args: Any, *namen: str) -> Any:
 
 
 def _on_take_damage_pre(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    _echo_treffer_zaehlen()   # v1.63b: Messung Echo Bullet
+    _unspent_vorher(obj)      # v1.73 Unspent Time
+    if _frieren and not _eigen:   # v1.71 Time Freeze: Leben vor dem Treffer
+        try:
+            pfad = obj._path_name()
+            if pfad in _frieren:
+                _frieren[pfad]["vor"] = _leben(obj)
+        except Exception:  # noqa: BLE001
+            pass
     if not _schaden_zaehlt():
         return None
     _filter_zaehlen("PRE erreicht")
@@ -4184,6 +4789,14 @@ def _on_take_damage_pre(obj: UObject, args: Any, ret: Any, func: Any) -> None:
 
 def _on_take_damage_post(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     global _schaden_spur_gemeldet
+    _unspent_nachher(obj, args)   # v1.73 Unspent Time
+    if _frieren and not _eigen:   # v1.71 Time Freeze: der erste Treffer taut auf
+        try:
+            e = _frieren.get(obj._path_name())
+            if e is not None and "vor" in e:
+                zeitstillstand_treffer(obj, args, max(0.0, e["vor"] - max(0.0, _leben(obj))))
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Time Freeze: Treffer: {ex}")
     if not _schaden_zaehlt():
         return
     try:
@@ -4227,39 +4840,15 @@ def _on_take_damage_post(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     if not _schaden_spur_gemeldet:
         _schaden_spur_gemeldet = True
         logging.info(f"[ZB] Schadens-Hook traegt: {obj.Name} Parameter {param:.0f}, Leben {vorher} -> {nachher:.0f}")
-    if _state == ZUSTAND_GELEGT:
-        if _rang_para > 0:
-            _buch[pfad] = _buch.get(pfad, 0.0) + wert
-        if _rang_vorb > 0:
-            _markiert.add(pfad)
-        return
-    # Nach dem Zuenden: Vorbelastung, solange das Fenster offen ist.
-    if pfad in _markiert and _game_time(pc) < _vorbelastung_bis:
-        eintrag = _nachschlag.setdefault(pfad, [WeakPointer(obj), 0.0])
-        eintrag[1] += wert * VORBELASTUNG_JE_RANG * _rang_vorb
+    _buch[pfad] = _buch.get(pfad, 0.0) + wert
 
 
 # --- Diagnose fuer Paket B (v0.85) --------------------------------------------------------------
 #
-# v0.84 im Spiel: kein einziger Treffer gebucht, die Zeile "Schadens-Hook traegt" kam nie. Ob
-# TakeDamage gar nicht feuert (wie NotifyKilled in v0.65) oder ob der Urheber-Vergleich alles
-# verwirft, war aus dem Log NICHT zu trennen - Falle 2, zum dritten Mal. Jetzt zaehlen wir beides:
-#   - Zaehl-Hooks auf sieben Kandidaten, jeder nur ein Zaehler plus der erste Aufruf im Wortlaut
-#   - im eigentlichen Hook: wie oft PRE/POST kamen und warum verworfen wurde
-# 'zb schaden' gibt alles aus. Pakete geprueft (Class=-Zeile): WillowPawn in WillowGame,
-# GearboxPawn in GearboxFramework, Pawn und Actor in Engine.
+# Der Hook zaehlt, wie oft PRE/POST kamen und warum verworfen wurde; 'zb schaden' gibt es aus.
+# Die Zaehl-Hooks auf sieben TakeDamage-Kandidaten (v0.85: welcher Weg traegt?) sind seit dem
+# Aufraeumen 2026-10-10 raus - beantwortet: WillowAIPawn:TakeDamage. Am Spieler: WillowPlayerPawn (v1.60).
 
-SCHADEN_KANDIDATEN = (
-    "WillowGame.WillowAIPawn:TakeDamage",
-    "WillowGame.WillowPawn:TakeDamage",
-    "GearboxFramework.GearboxPawn:TakeDamage",
-    "Engine.Pawn:TakeDamage",
-    "Engine.Actor:TakeDamage",
-    "WillowGame.WillowAIPawn:ActorTakeDamageInner",
-    "WillowGame.WillowPawn:ActorTakeDamageInner",
-)
-_schaden_zaehler: dict[str, int] = {}
-_schaden_erster: dict[str, str] = {}
 _schaden_filter: dict[str, int] = {}
 _schaden_filter_beispiel: dict[str, str] = {}
 
@@ -4270,113 +4859,30 @@ def _filter_zaehlen(grund: str, beispiel: str = "") -> None:
         _schaden_filter_beispiel[grund] = beispiel
 
 
-def _make_schaden_zaehler(fname: str):
-    def zaehler(obj: UObject, args: Any, ret: Any, func: Any) -> None:
-        _schaden_zaehler[fname] = _schaden_zaehler.get(fname, 0) + 1
-        if fname in _schaden_erster:
-            return
-        try:
-            urheber = _arg(args, "InstigatedBy", "EventInstigator")
-            wert = _arg(args, "Damage", "DamageAmount")
-            _schaden_erster[fname] = (f"{obj.Name} ({obj.Class.Name}), Schaden {wert}, "
-                                      f"Urheber {urheber._path_name() if urheber is not None else None}")
-        except Exception as ex:  # noqa: BLE001
-            _schaden_erster[fname] = f"<{ex}>"
-    return zaehler
-
-
 def schaden_zeigen() -> None:
-    """zb schaden - welcher Kandidat feuert beim Schiessen, und was filtert der Hook weg."""
+    """zb schaden - was der Schadens-Hook gezaehlt und warum er verworfen hat."""
     pc = local_pc()
     logging.info(f"[ZB] schaden: eigener Controller = {pc._path_name() if pc else None}, "
                  f"Pawn = {pc.Pawn._path_name() if pc and pc.Pawn else None}")
-    for fname in SCHADEN_KANDIDATEN:
-        n = _schaden_zaehler.get(fname, 0)
-        logging.info(f"[ZB] schaden: {n:6d}x  {fname}" + (f"  | erster: {_schaden_erster[fname]}" if n else ""))
     for grund, n in sorted(_schaden_filter.items()):
         logging.info(f"[ZB] schaden: Hook {grund}: {n}x" +
                      (f"  | Beispiel: {_schaden_filter_beispiel[grund]}" if grund in _schaden_filter_beispiel else ""))
-    logging.info("[ZB] schaden: weitere Kandidaten am Controller:")
-    dump_funcs("WillowPlayerController", "Damage")
 
 
 def schaden_zuruecksetzen() -> None:
-    _schaden_zaehler.clear()
-    _schaden_erster.clear()
     _schaden_filter.clear()
     _schaden_filter_beispiel.clear()
     logging.info("[ZB] schaden: Zaehler auf null")
 
 
-ZEITLUPE_MESSUNG_S = 3.0  # eine Sekunde war zu verrauscht (v0.85: stehende Gegner sahen aus wie eingefroren)
-_erzwungen: dict[str, float] = {}  # Pfad -> Faktor, fuer Art 4 jeden Frame nachgeschrieben
-
-
-def zeitlupe_versuch(art: int, faktor: float, radius_m: float = 15.0, dauer_s: float = 5.0) -> None:
-    """zb zeitlupe [ART] [FAKTOR] [RADIUS] - Verlangsamen an Gegnern ringsum ausprobieren (v0.85).
-
-    v0.84: CustomTimeDilation = 0.5 steht nachweislich am Pawn (nachgelesen), der Nutzer sah aber
-    keine Zeitlupe. Also wie beim Rueckstoss: Varianten ausprobieren und messen, statt zu raten.
-      0  nichts aendern, nur messen            (der Vergleichswert)
-      1  CustomTimeDilation = FAKTOR           (der Weg aus v0.84)
-      2  GroundSpeed und AirSpeed x FAKTOR     (Bewegungstempo - Felder am Pawn, im Dump 440)
-      3  beides
-      4  GroundSpeed/AirSpeed x FAKTOR, JEDEN FRAME erzwungen (v0.88)
-    Gemessen wird die Strecke in 3 s (_flug_nachmessen) - am besten an Gegnern, die auf einen
-    zulaufen: Art 0 gibt die normale Strecke, Art 1-4 zeigen, ob sie kuerzer wird.
-
-    v0.85/v0.86 im Spiel: Art 1 (CustomTimeDilation 0,3) - Nutzer: "ist nichts passiert"; die
-    gemessenen 0,0 m waren Zufall (Gegner standen beim Zuschlagen). Art 2 streute (1,4 / 3,4 m). Der
-    Verdacht fuer Art 4: GroundSpeed wird laufend aus einem Attribut neu gesetzt (beim Spieler speist
-    FootSpeed ihn, *Weite* 440 -> 506), einmal setzen haelt dann nur bis zum naechsten Frame.
-    Die Nachmessung liest GroundSpeed mit - steht dort wieder der alte Wert, ist der Verdacht belegt.
-    Nach dauer_s Sekunden wird alles auf die gemerkten Werte zurueckgesetzt.
-    """
-    pc = local_pc()
-    pawn = pc.Pawn if pc else None
-    if pawn is None:
-        logging.error("[ZB] zeitlupe: kein Spieler-Pawn")
-        return
-    mitte = pawn.Location
-    n = 0
-    for g in _gegner_lebend():
-        try:
-            if _abstand_uu(g.Location, mitte) > radius_m * UU_JE_METER_A:
-                continue
-            pfad = g._path_name()
-            eintrag = _verlangsamt.get(pfad) or [WeakPointer(g), 0.0, float(g.CustomTimeDilation),
-                                                 float(g.GroundSpeed), float(g.AirSpeed)]
-            eintrag[1] = dauer_s
-            if art in (1, 3):
-                g.CustomTimeDilation = faktor
-            if art in (2, 3, 4):
-                g.GroundSpeed = eintrag[3] * faktor
-                g.AirSpeed = eintrag[4] * faktor
-            if art == 4:
-                _erzwungen[pfad] = faktor  # _paket_b_tick schreibt es jeden Frame nach
-            if art != 0:
-                _verlangsamt[pfad] = eintrag
-            _flug_merken(g, f"Zeitlupe Art {art}", ZEITLUPE_MESSUNG_S)
-            n += 1
-            logging.info(f"[ZB] zeitlupe: {g.Name} CustomTimeDilation {g.CustomTimeDilation}, "
-                         f"GroundSpeed {g.GroundSpeed:.0f}, AirSpeed {g.AirSpeed:.0f}")
-        except Exception as ex:  # noqa: BLE001
-            logging.error(f"[ZB] zeitlupe: {ex}")
-    logging.info(f"[ZB] zeitlupe: Art {art}, Faktor {faktor}, {n} Gegner - Strecken kommen in {ZEITLUPE_MESSUNG_S:.0f} s")
-
-
 def mechanik_paket_b_gelegt() -> None:
-    """Beim Legen: Raenge einmal lesen, Buch und Markierungen leeren."""
-    global _rang_para, _rang_vorb, _rang_zeitspur, _vorbelastung_bis
+    """Beim Legen: Raenge einmal lesen, Buch leeren."""
+    global _rang_para, _rang_zeitspur
     _rang_para = skill_rang("Paradoxon")
-    _rang_vorb = skill_rang("Vorbelastung")
     _rang_zeitspur = skill_rang("Zeitspur")
     _buch.clear()
-    _markiert.clear()
-    _nachschlag.clear()
-    _vorbelastung_bis = 0.0
-    if _rang_para or _rang_vorb or _rang_zeitspur:
-        logging.info(f"[ZB] Paket B: Paradoxon R{_rang_para}, Vorbelastung R{_rang_vorb}, Zeitspur R{_rang_zeitspur}")
+    if _rang_para or _rang_zeitspur:
+        logging.info(f"[ZB] Paket B: Paradoxon R{_rang_para}, Zeitspur R{_rang_zeitspur}")
 
 
 def mechanik_paradoxon() -> bool:
@@ -4408,7 +4914,7 @@ def mechanik_paradoxon() -> bool:
             continue  # tot oder weg - der Schaden verfaellt
         _eigen = True
         try:
-            wert = gebucht * PARADOXON_ANTEIL
+            wert = gebucht * PARADOXON_ANTEIL * _rang_para
             logging.info(f"[ZB] Paradoxon: {ziel.Name} gebucht {gebucht:.0f} -> {_treffer(ziel, pc, wert, 0.0, ziel.Location, False)}")
             n += 1
             summe += wert
@@ -4419,71 +4925,144 @@ def mechanik_paradoxon() -> bool:
     return True
 
 
-def mechanik_vorbelastung_gezuendet(pc: UObject) -> None:
-    """Das 8-s-Fenster oeffnen. Erst NACH den Umkreis-Skills des Zuendens, damit deren Treffer
-    nicht selbst schon nachgeschlagen werden."""
-    global _vorbelastung_bis
-    if _rang_vorb <= 0 or not _markiert:
-        _markiert.clear()
+# v1.60: Return to Sender (Hindsight T3, docs/skills.md 9.2). Solange die Bombe liegt, bucht ein Hook
+# am SPIELER, wer ihn wie stark verletzt hat; beim Zuenden bekommt jeder noch lebende Urheber 20 % je
+# Rang (v1.60b, vorher 20) davon zurueck, an seiner Position (_treffer, wie Paradoxon).
+# Hook aus dem BO2-Projekt (Test 76, dort bewiesen, bei uns NEU): WillowGame.WillowPlayerPawn:TakeDamage.
+# WillowPawn:TakeDamage feuert fuer Spieler fast nie. Gebucht wird der TATSAECHLICHE Verlust an Leben +
+# Schild (PRE/POST am eigenen Pawn, Spike B), nicht args.Damage - so zaehlen Resistenzen schon mit.
+# Urheber: InstigatedBy.Pawn, sonst Pipeline.DamageInstigator (ggf. dessen Instigator, falls Projektil).
+# An fremden Objekten nur Eigenschaften lesen (v0.74).
+SPIELER_SCHADEN_FUNC = "WillowGame.WillowPlayerPawn:TakeDamage"
+RUECKSENDEN_JE_RANG = 0.25  # v1.60b: Nutzer, 20 % wirkte schwach
+_rs_rang = 0
+_rs_vor = -1.0
+_rs_buch: dict[str, float] = {}   # Pfad des Urhebers -> erlittener Schaden
+_rs_ohne_urheber = 0.0
+_rs_spur_gemeldet = False
+
+
+def _rs_eigener_pawn(obj: UObject) -> UObject | None:
+    pc = local_pc()
+    if pc is None or pc.Pawn is None:
+        return None
+    try:
+        return pc.Pawn if obj._path_name() == pc.Pawn._path_name() else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _rs_urheber(args: Any) -> UObject | None:
+    kandidaten = []
+    try:
+        ib = _arg(args, "InstigatedBy", "EventInstigator")
+        if ib is not None:
+            kandidaten.append(ib.Pawn)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        di = args.Pipeline.DamageInstigator
+        if di is not None:
+            kandidaten.append(di)
+            kandidaten.append(getattr(di, "Instigator", None))
+    except Exception:  # noqa: BLE001
+        pass
+    for k in kandidaten:
+        if k is None or not _ist_welt_actor(k):
+            continue
+        try:
+            if k.Class.Name.startswith("WillowAIPawn") or k.Class.Name.endswith("AIPawn"):
+                return k
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def _on_spieler_schaden_pre(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _rs_vor
+    if _rs_rang <= 0 or _state != ZUSTAND_GELEGT:
         return
-    _vorbelastung_bis = _game_time(pc) + VORBELASTUNG_DAUER_S
-    logging.info(f"[ZB] Vorbelastung: {len(_markiert)} Ziel(e) markiert, +{VORBELASTUNG_JE_RANG * _rang_vorb * 100:.0f} % "
-                 f"fuer {VORBELASTUNG_DAUER_S:.0f} s")
+    pawn = _rs_eigener_pawn(obj)
+    if pawn is None:
+        return
+    try:
+        _rs_vor = float(pawn.GetHealth()) + float(pawn.GetShieldStrength())
+    except Exception as ex:  # noqa: BLE001
+        _rs_vor = -1.0
+        logging.error(f"[ZB] Return to Sender PRE: {ex}")
+
+
+def _on_spieler_schaden_post(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    global _rs_vor, _rs_ohne_urheber, _rs_spur_gemeldet
+    if _rs_rang <= 0 or _state != ZUSTAND_GELEGT or _rs_vor < 0:
+        return
+    pawn = _rs_eigener_pawn(obj)
+    if pawn is None:
+        return
+    try:
+        verlust = _rs_vor - (float(pawn.GetHealth()) + float(pawn.GetShieldStrength()))
+    finally:
+        _rs_vor = -1.0
+    if verlust <= 0:
+        return
+    urheber = _rs_urheber(args)
+    if urheber is None:
+        _rs_ohne_urheber += verlust
+        return
+    pfad = urheber._path_name()
+    _rs_buch[pfad] = _rs_buch.get(pfad, 0.0) + verlust
+    if not _rs_spur_gemeldet:
+        _rs_spur_gemeldet = True
+        logging.info(f"[ZB] Return to Sender: erster Treffer gebucht - {urheber.Name} {verlust:.0f} (Hook feuert)")
+
+
+def mechanik_ruecksenden_gelegt() -> None:
+    global _rs_rang, _rs_ohne_urheber, _rs_vor
+    _rs_rang = skill_rang("Zuruecksenden")
+    _rs_buch.clear()
+    _rs_ohne_urheber, _rs_vor = 0.0, -1.0
+
+
+def mechanik_ruecksenden_gezuendet() -> bool:
+    global _eigen
+    if _rs_rang <= 0:
+        return False
+    pc = local_pc()
+    if pc is None:
+        return False
+    if not _rs_buch:
+        logging.info(f"[ZB] Return to Sender: nichts gebucht (ohne Urheber: {_rs_ohne_urheber:.0f})")
+        return False
+    ziele = {}
+    for g in _gegner_lebend():
+        try:
+            ziele[g._path_name()] = g
+        except Exception:  # noqa: BLE001
+            continue
+    n, summe = 0, 0.0
+    for pfad, erlitten in _rs_buch.items():
+        ziel = ziele.get(pfad)
+        if ziel is None:
+            continue  # tot oder weg - verfaellt
+        wert = erlitten * RUECKSENDEN_JE_RANG * _rs_rang
+        _eigen = True   # eigene Treffer nicht von Paradoxon buchen lassen
+        try:
+            logging.info(f"[ZB] Return to Sender: {ziel.Name} erlitten {erlitten:.0f} -> {_treffer(ziel, pc, wert, 0.0, ziel.Location, False)}")
+        finally:
+            _eigen = False
+        n += 1
+        summe += wert
+    logging.info(f"[ZB] Return to Sender: Rang {_rs_rang}, {len(_rs_buch)} Urheber, {n} noch am Leben, "
+                 f"{summe:.0f} zurueckgeschickt | ohne Urheber: {_rs_ohne_urheber:.0f}")
+    _rs_buch.clear()
+    return True
 
 
 def mechanik_paket_b_verpufft() -> None:
-    """Verpufft die Bombe, verfaellt das Buch, und markiert ist auch niemand mehr."""
-    global _vorbelastung_bis
-    if _buch or _markiert:
-        logging.info(f"[ZB] Paket B: verpufft - {len(_buch)} Buchungen und {len(_markiert)} Markierungen verfallen")
+    """Verpufft die Bombe, verfaellt das Buch."""
+    if _buch:
+        logging.info(f"[ZB] Paket B: verpufft - {len(_buch)} Buchungen verfallen")
     _buch.clear()
-    _markiert.clear()
-    _vorbelastung_bis = 0.0
-
-
-def _paket_b_tick(pc: UObject, dt: float) -> None:
-    """Laeuft in jedem PlayerTick, unabhaengig vom Zustand: Nachschlag austeilen, Fenster schliessen,
-    Verlangsamung auslaufen lassen."""
-    global _eigen, _vorbelastung_bis
-    if _nachschlag:
-        auftrag = dict(_nachschlag)
-        _nachschlag.clear()
-        for pfad, (zeiger, wert) in auftrag.items():
-            ziel = zeiger()
-            if ziel is None or wert <= 0 or not _ist_welt_actor(ziel):
-                continue
-            _eigen = True
-            try:
-                logging.info(f"[ZB] Vorbelastung: {ziel.Name} -> {_treffer(ziel, pc, wert, 0.0, ziel.Location, False)}")
-            finally:
-                _eigen = False
-    if _vorbelastung_bis > 0.0 and _game_time(pc) >= _vorbelastung_bis:
-        logging.info("[ZB] Vorbelastung: Fenster zu")
-        _vorbelastung_bis = 0.0
-        _markiert.clear()
-    for pfad in list(_verlangsamt):
-        eintrag = _verlangsamt[pfad]
-        eintrag[1] -= dt
-        if eintrag[1] > 0:
-            if pfad in _erzwungen:  # Art 4: jeden Frame nachschreiben, falls das Spiel zurueckgesetzt hat
-                ziel = eintrag[0]()
-                if ziel is not None and _ist_welt_actor(ziel):
-                    try:
-                        ziel.GroundSpeed = eintrag[3] * _erzwungen[pfad]
-                        ziel.AirSpeed = eintrag[4] * _erzwungen[pfad]
-                    except Exception:  # noqa: BLE001
-                        pass
-            continue
-        del _verlangsamt[pfad]
-        _erzwungen.pop(pfad, None)
-        ziel = eintrag[0]()
-        if ziel is not None and _ist_welt_actor(ziel):
-            try:
-                _verlangsamung_zuruck(ziel, eintrag)
-                logging.info(f"[ZB] Zeitspur: {ziel.Name} wieder normal (CustomTimeDilation {ziel.CustomTimeDilation},"
-                             f" GroundSpeed {ziel.GroundSpeed:.0f})")
-            except Exception as ex:  # noqa: BLE001
-                logging.error(f"[ZB] Zeitspur zuruecksetzen: {ex}")
 
 
 ZEITWIRBEL_TAKT_S = 2
@@ -4534,26 +5113,6 @@ def zeitspur_sekunde() -> None:
                 traeger=proj, mitte=anker)
 
 
-def zeitspur_alle_zuruecksetzen() -> None:
-    """Beim Deaktivieren des Moduls - sonst bleibt ein Gegner fuer immer in Zeitlupe."""
-    for eintrag in _verlangsamt.values():
-        ziel = eintrag[0]()
-        if ziel is not None and _ist_welt_actor(ziel):
-            try:
-                _verlangsamung_zuruck(ziel, eintrag)
-            except Exception:  # noqa: BLE001
-                pass
-    _verlangsamt.clear()
-
-
-def _verlangsamung_zuruck(ziel: UObject, eintrag: list) -> None:
-    """Die gemerkten Originalwerte zurueckschreiben - nie pauschal 1.0/440, ein Gegner kann von
-    Haus aus anders laufen."""
-    ziel.CustomTimeDilation = eintrag[2]
-    ziel.GroundSpeed = eintrag[3]
-    ziel.AirSpeed = eintrag[4]
-
-
 # =================================================================================================
 # Handgriff 4, Paket C (v0.89): Es war nie passiert - und die Diagnose fuer Kurs halten
 #
@@ -4568,7 +5127,7 @@ def _verlangsamung_zuruck(ziel: UObject, eintrag: list) -> None:
 #
 # Nicht im Hook selbst zuenden: mitten im Umfallen Zustand und Position umzuschreiben waere
 # Reentrancy ins Ungewisse. Der Hook setzt nur einen Merker, der naechste PlayerTick handelt
-# (dasselbe Muster wie der Vorbelastungs-Nachschlag).
+# (dasselbe Muster wie der zweite Wurf von Time Loop).
 #
 # Aufstehen: GoFromInjuredToHealthy() - GEWAEHLT nach dem Namen, nicht belegt, dass es den Spieler
 # wirklich aufrichtet. Die Injured-Eigenschaften des Pawns werden davor und danach geloggt.
@@ -4898,7 +5457,7 @@ def mechanik_nachbild() -> None:
 
 
 # =================================================================================================
-# Handgriff 4, Paket E (v0.95): Verbuendete - Zweite Meinung, Gemeinsame Rueckkehr, Zeitkapsel-Heilung
+# Handgriff 4, Paket E (v0.95): Verbuendete - Zeitkapsel-Heilung
 #
 # Verbuendete = die anderen WillowPlayerPawns der Karte (Welt-Actors, Pfad geprueft). Pools setzen
 # wie beim Zuenden und bei Auffrischung (SetHealth/SetShieldStrength, Get*/GetMax* - alle am eigenen
@@ -4908,9 +5467,6 @@ def mechanik_nachbild() -> None:
 # Solo nicht pruefbar - darum 'zb koop selbst': der eigene Pawn zaehlt dann als Verbuendeter. Mit
 # 'zb fasttot' VOR dem Legen (Anker speichert Schild 0 / Leben 1) sieht man die Aufschlaege im Log.
 
-VERBUENDETE_RADIUS_M = 10.0          # Zweite Meinung (um den Anker), Gemeinsame Rueckkehr (Ankunftsort)
-ZWEITE_MEINUNG_JE_RANG = 0.06        # Schild, Anteil am Maximum
-GEMEINSAM_JE_RANG = 0.05             # Leben, Anteil am Maximum
 ZEITKAPSEL_RADIUS_M = 8.0
 ZEITKAPSEL_JE_RANG_S = 0.008         # Leben je Sekunde, Anteil am Maximum
 
@@ -4956,21 +5512,6 @@ def _pool_auffuellen(p: UObject, label: str, anteil: float, schild: bool) -> str
     except Exception as ex:  # noqa: BLE001
         return f"{p.Name}: FEHLER {ex}"
     return f"{p.Name} {'Schild' if schild else 'Leben'} {alt:.0f} -> {neu:.0f} (Max {maxi:.0f}, +{anteil * 100:.1f} %)"
-
-
-def mechanik_verbuendete_gezuendet(pawn: UObject) -> None:
-    """Nach dem Teleport: Zweite Meinung (Schild) und Gemeinsame Rueckkehr (Leben) fuer Verbuendete
-    um den Anker = Ankunftsort. Beide drehen sich um denselben Ort, weil der Spieler dort landet."""
-    for skill, label, je_rang, schild in (("ZweiteMeinung", "Zweite Meinung", ZWEITE_MEINUNG_JE_RANG, True),
-                                          ("GemeinsameRueckkehr", "Gemeinsame Rueckkehr", GEMEINSAM_JE_RANG, False)):
-        rang = skill_rang(skill)
-        if rang <= 0:
-            continue
-        ziele, gesamt = _verbuendete(pawn.Location, VERBUENDETE_RADIUS_M)
-        for p in ziele:
-            logging.info(f"[ZB] {label}: {_pool_auffuellen(p, label, je_rang * rang, schild)}")
-        logging.info(f"[ZB] {label}: Rang {rang}, {len(ziele)} Verbuendete in {VERBUENDETE_RADIUS_M:.0f} m"
-                     f" ({gesamt} Spieler-Pawns auf der Karte{', eigener zaehlt mit' if _koop_selbst else ''})")
 
 
 def mechanik_zeitkapsel_sekunde() -> None:
@@ -5082,8 +5623,51 @@ def mechanik_sprengsatz(pawn: UObject) -> None:
     granate = _granate(pawn)
     element = _granaten_element(granate)
     basis, quelle = _granaten_schaden(pawn, granate)
-    explodieren(pawn, "Sprengsatz", SPRENGSATZ_EXPLOSION[element], basis * SPRENGSATZ_FAKTOR, SPRENGSATZ_RADIUS_UU,
-                f"{element}, {SPRENGSATZ_FAKTOR:.0f} x {basis:.0f} ({quelle})")
+    explodieren(pawn, "Sprengsatz", SPRENGSATZ_EXPLOSION[element], basis * SPRENGSATZ_FAKTOR * _endspurt_faktor,
+                SPRENGSATZ_RADIUS_UU, f"{element}, {SPRENGSATZ_FAKTOR:.0f} x {basis:.0f} ({quelle}) x Crunch {_endspurt_faktor:.2f}")
+
+
+# v1.69: Crunch Time (Rewind T5, 1 Rang, docs/skills.md 9.2). Je mehr Fenster beim Zuenden uebrig ist, desto
+# staerker: Faktor 1 + min(1, Rest / 15 s) auf Sprengsatz und Nachhall (also bis doppelt), und die Bombe
+# explodiert selbst am Anker (= Ankunftsort, nach dem Teleport) mit Faktor x Granatenschaden im Element der
+# Granate. Die Restzeit kommt aus der laufenden Skill-Instanz (StartTime + Duration, s. Kurs halten) - so
+# zaehlen Langzeitgedaechtnis und Kurs halten mit. Gemessen wird in zuenden(), VOR ResetActionSkill.
+ENDSPURT_VOLL_S = 15.0
+ENDSPURT_RADIUS_UU = 800.0   # 8 m
+_endspurt_faktor = 1.0       # gilt fuer das laufende Zuenden; 1.0 ohne Skill
+
+
+def endspurt_messen(pc: UObject) -> None:
+    global _endspurt_faktor
+    _endspurt_faktor = 1.0
+    if skill_rang("Endspurt") <= 0:
+        return
+    rest, quelle = None, "Skill-Instanz"
+    sm = skill_manager()
+    d = _find("SkillDefinition", f"{ACTION_OUTER}.Skill_{SKILL_OBJ}")
+    if sm is not None and d is not None:
+        try:
+            inst = sm.GetActiveSkillForInstigatorByDefinition(pc, d)
+            if inst is not None:
+                rest = float(inst.StartTime) + float(inst.Duration) - _game_time(pc)
+        except Exception as ex:  # noqa: BLE001
+            logging.info(f"[ZB] Crunch Time: Skill-Instanz nicht lesbar ({ex})")
+    if rest is None:
+        quelle = "Ersatz (Legezeit + Grundfenster)"
+        rest = _legen_time + FENSTER_SEKUNDEN - _game_time(pc)
+    _endspurt_faktor = 1.0 + max(0.0, min(1.0, rest / ENDSPURT_VOLL_S))
+    logging.info(f"[ZB] Crunch Time: Rest {rest:.1f} s ({quelle}) -> Faktor {_endspurt_faktor:.2f}")
+
+
+def mechanik_endspurt_bombe(pawn: UObject) -> None:
+    """Nach dem Teleport: die Bombe explodiert am Anker (der Spieler steht dort)."""
+    if skill_rang("Endspurt") <= 0:
+        return
+    granate = _granate(pawn)
+    element = _granaten_element(granate)
+    basis, quelle = _granaten_schaden(pawn, granate)
+    explodieren(pawn, "Crunch Time", SPRENGSATZ_EXPLOSION[element], basis * _endspurt_faktor, ENDSPURT_RADIUS_UU,
+                f"{element}, {_endspurt_faktor:.2f} x {basis:.0f} ({quelle})")
 
 
 def _granaten_schaden(pawn: UObject, granate: UObject | None) -> tuple[float, str]:
@@ -5238,37 +5822,8 @@ FX_SPUR_MAX = 60
 
 _effekte_an = True
 _effekte_log = False                     # zb effekte log: jede Effekt-Explosion loggen
-_effekt_traeger_ptr: WeakPointer = WeakPointer()
 _effekt_queue: list[list] = []           # [Restzeit, Label, Pfad, Ort, Radius]
 _fx_fehlt: set[str] = set()
-
-
-def _effekt_traeger(ort: Any) -> UObject | None:
-    t = _effekt_traeger_ptr()
-    try:
-        if t is not None and _ist_welt_actor(t) and not bool(t.bDeleteMe):
-            t.Location = ort
-            return t
-    except Exception:  # noqa: BLE001
-        pass
-    pc = local_pc()
-    if pc is None:
-        return None
-    try:
-        t = pc.Spawn(SpawnClass=unrealsdk.find_class(BOMB_ACTOR_CLASS), SpawnLocation=ort,
-                     SpawnRotation=unrealsdk.make_struct("Rotator", Pitch=0, Yaw=0, Roll=0), bNoCollisionFail=True)
-    except Exception as ex:  # noqa: BLE001
-        logging.error(f"[ZB] Effekt-Traeger: Spawn: {ex}")
-        return None
-    if t is None:
-        return None
-    try:
-        t.SetCollisionType(COLLIDE_NO_COLLISION)
-    except Exception:  # noqa: BLE001
-        pass
-    _effekt_traeger_ptr.replace(t)
-    logging.info(f"[ZB] Effekt-Traeger gespawnt: {t._path_name()}")
-    return t
 
 
 def effekt(label: str, pfad: str, ort: Any, radius_uu: float, verzoegerung: float = 0.0) -> None:
@@ -5337,39 +5892,6 @@ def _projektil_traeger(ort: Any) -> UObject | None:
     logging.info(f"[ZB] Projektil-Traeger gespawnt: {proj.Name}")
     return proj
 
-
-# v1.02: Der Traeger (DynamicSMActor) zeigte nichts, der Spieler als Ort schon (Probe v1.01: nur
-# die Varianten "am Spieler" sichtbar, Schaden 0 oder 1 egal). Also bleibt der Spieler Ursprung und
-# die Explosion wird per LocationOffset verschoben. Ob der Versatz in Welt- oder Spielerkoordinaten
-# gilt, klaerte 'zb effekte probe' (v1.02, Yaw 6336 = 35 Grad): die Variante "relativ zur
-# Blickrichtung" landete vor dem Spieler, die Weltvariante 35 Grad daneben. Also Spielerkoordinaten.
-FX_VERSATZ_LOKAL = True
-
-
-def _versatz(pawn: UObject, ort: Any, lokal: bool) -> Any:
-    """Weltversatz Spieler -> ort, bei `lokal` in die Achsen des Spielers umgerechnet.
-
-    v1.06: die VOLLE Drehung (Pitch, Yaw, Roll), nicht nur Yaw. Der Zeitwirbel (v1.05) zeigte nichts
-    und traf nichts, waehrend 'zb effekte test' (Blick geradeaus) sichtbar war - Vermutung: das
-    Spiel dreht den Versatz auch um die Neigung, und wer nach unten schaut, schickt ihn in den Boden.
-    Mit Pitch 0 ist das Ergebnis dasselbe wie vorher. Achsen wie FRotationMatrix (UE3)."""
-    o = pawn.Location
-    dx, dy, dz = ort.X - o.X, ort.Y - o.Y, ort.Z - o.Z
-    if not lokal:
-        return _vec(dx, dy, dz)
-    # v1.07: die KAMERA (Controller) statt des Koerpers. Zeitwirbel v1.06: Pawn-Pitch immer 0, Controller
-    # 11 Grad nach unten; der erste Impuls (Anker nah) traf, danach wanderte er mit wachsender Entfernung
-    # weg und verschwand (31 m x sin 11 Grad = 6 m in den Boden).
-    pc = local_pc()
-    r = pc.Rotation if pc is not None else pawn.Rotation
-    k = 2.0 * math.pi / 65536.0
-    p, y, w = float(r.Pitch) * k, float(r.Yaw) * k, float(r.Roll) * k
-    sp, cp, sy, cy, sr, cr = math.sin(p), math.cos(p), math.sin(y), math.cos(y), math.sin(w), math.cos(w)
-    ax = (cp * cy, cp * sy, sp)
-    ay = (sr * sp * cy - cr * sy, sr * sp * sy + cr * cy, -sr * cp)
-    az = (-(cr * sp * cy + sr * sy), cy * sr - cr * sp * sy, cr * cp)
-    punkt = lambda a: dx * a[0] + dy * a[1] + dz * a[2]  # noqa: E731
-    return _vec(punkt(ax), punkt(ay), punkt(az))
 
 
 _effekt_rufe: list[list] = []   # [Restzeit, Funktion] - verzoegerte Aufrufe (zb effekte probe)
@@ -5490,28 +6012,10 @@ def holo_test(sekunden: float = 10.0) -> None:
     holo_spawnen(_vor_spieler(pc.Pawn, 300.0), "Test", sekunden)
 
 
-def mechanik_dejavu(grund: str = "gezuendet") -> bool:
-    """Deja-vu: beim Zuenden alle Kill Skills anwerfen, als haette man gerade getoetet.
-
-    Haengt am Rang von Deja-vu selbst (der Skill verspricht es auf seiner Karte), nicht am Kill-
-    Zaehler: auch ohne einen einzigen Kill im Fenster soll das Zuenden auffrischen.
-
-    Gemessen wird ueber IsSkillActive vor und nach dem Aufruf (Spike E). "aus -> an" ist der Beleg;
-    steht schon vorher alles auf "an", sagt der Vergleich nichts ueber das Auffrischen der Dauer -
-    dann zaehlt nur das HUD. Darum im Test mit kalten Kill-Skills anfangen.
-    """
-    # v1.13: die Kill Skills sind jetzt Stack-Skills des Moduls - UpdateKillSkills (v0.70) schaltete
-    # die harten Kill Skills des Spiels und hat hier nichts mehr zu tun. Deja-vu haelt die Stacks fest.
-    if skill_rang("DejaVu") <= 0:
-        return False
-    kill_stacks_festhalten(f"Deja-vu, {grund}")
-    return True
-
-
 def _on_player_tick(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     """POST auf WillowPlayerController:PlayerTick - jeden Frame. Nur im Zustand 'gelegt' und nur
     fuer den eigenen Controller wird gerechnet."""
-    global _tick_akku, _wurf
+    global _tick_akku, _wurf, _unendlich_rest, _geliehen_rest_s
     pc = local_pc()
     if pc is None or obj._path_name() != pc._path_name():
         return
@@ -5546,10 +6050,6 @@ def _on_player_tick(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Granaten-Spaeher: {ex}")
     try:
-        _paket_b_tick(pc, dt)  # Vorbelastung austeilen, Zeitspur auslaufen lassen (v0.84)
-    except Exception as ex:  # noqa: BLE001
-        logging.error(f"[ZB] Paket-B-Tick: {ex}")
-    try:
         _ffyl_tick(pc)  # Es war nie passiert (v0.89)
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] FFYL-Tick: {ex}")
@@ -5566,13 +6066,21 @@ def _on_player_tick(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Explosions-Nachmessung: {ex}")
     try:
+        _frieren_tick(dt)  # Spike Time Freeze (v1.70)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] frieren messen: {ex}")
+    try:
+        _unspent_tick(dt)  # Unspent Time (v1.73)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Unspent Time: {ex}")
+    try:
+        _krit_tick(dt)  # Guaranteed Crits (v1.72)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Guaranteed Crits: {ex}")
+    try:
         _schatten_tick(pc, dt)  # Schattenanker: Ringpuffer und Haltepruefung (v0.95)
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Schattenanker-Tick: {ex}")
-    try:
-        _wirkung_uhren_tick(dt)  # Rueckenwind nach 10 s abschalten (v0.97)
-    except Exception as ex:  # noqa: BLE001
-        logging.error(f"[ZB] Wirkungs-Uhren: {ex}")
     try:
         _effekt_tick(dt)  # verzoegerte Effekte und Blitzspur (v1.00)
     except Exception as ex:  # noqa: BLE001
@@ -5585,6 +6093,16 @@ def _on_player_tick(obj: UObject, args: Any, ret: Any, func: Any) -> None:
         _kill_stack_tick(dt)  # Kill-Stacks verfallen lassen (v1.13)
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Kill-Stack-Tick: {ex}")
+    try:
+        _unendlich_tick(pc, dt)  # Infinite: Magazin voll halten (v1.58)
+    except Exception as ex:  # noqa: BLE001
+        _unendlich_rest = 0.0
+        logging.error(f"[ZB] Infinite-Tick: {ex}")
+    try:
+        _geliehen_tick(pc, dt)  # Borrowed Health: Schuld abtragen (v1.59)
+    except Exception as ex:  # noqa: BLE001
+        _geliehen_rest_s = 0.0
+        logging.error(f"[ZB] Borrowed-Health-Tick: {ex}")
     if _state != ZUSTAND_GELEGT:
         return
     _tick_akku += dt
@@ -6093,8 +6611,15 @@ def register_tracers() -> None:
     add_hook(UPDATE_KILL_SKILLS_FUNC, Type.PRE, "zb_killskills", _on_update_kill_skills)  # v1.16
     add_hook(TAKE_DAMAGE_FUNC, Type.PRE, "zb_schaden_vor", _on_take_damage_pre)     # Paket B, v0.84
     add_hook(TAKE_DAMAGE_FUNC, Type.POST, "zb_schaden_nach", _on_take_damage_post)  # Paket B, v0.84
-    for fname in SCHADEN_KANDIDATEN:  # v0.85: welcher Weg traegt Waffenschaden ueberhaupt?
-        add_hook(fname, Type.POST, f"zb_zaehl_{fname}", _make_schaden_zaehler(fname))
+    add_hook(SPIELER_SCHADEN_FUNC, Type.PRE, "zb_rs_vor", _on_spieler_schaden_pre)     # Return to Sender, v1.60
+    add_hook(FIRE_FUNC, Type.PRE, "zb_feuer", _on_fire_ammunition)                     # Haste Stacks, v1.61
+    add_hook(FIRE_FUNC, Type.PRE, "zb_echo_vor", _on_echo_pre)                         # Echo Bullet, v1.63
+    add_hook(FIRE_FUNC, Type.POST, "zb_echo_nach", _on_echo_post)                      # Echo Bullet, v1.63
+    add_hook(RELOAD_FUNC, Type.PRE, "zb_nachladen", _on_reload_anim)                   # Dimensional Loop, v1.64
+    for i, fname in enumerate(WURF_FUNCS):                                             # Time Loop, v1.65
+        add_hook(fname, Type.POST, f"zb_wurf_{i}", _make_wurf_hook(fname))
+    add_hook(WURF_FERTIG_FUNC, Type.POST, "zb_wurf_fertig", _on_wurf_fertig)           # Time Loop, v1.65d
+    add_hook(SPIELER_SCHADEN_FUNC, Type.POST, "zb_rs_nach", _on_spieler_schaden_post)  # Return to Sender, v1.60
     for fname in FFYL_HINEIN + FFYL_HERAUS:  # v0.89: Es war nie passiert
         add_hook(fname, Type.POST, f"zb_ffyl_{fname}", _make_ffyl_hook(fname, fname in FFYL_HINEIN))
     for fname in TRACE_FUNCS:
@@ -6121,11 +6646,15 @@ def unregister_tracers() -> None:
     remove_hook(UPDATE_KILL_SKILLS_FUNC, Type.PRE, "zb_killskills")
     remove_hook(TAKE_DAMAGE_FUNC, Type.PRE, "zb_schaden_vor")
     remove_hook(TAKE_DAMAGE_FUNC, Type.POST, "zb_schaden_nach")
-    for fname in SCHADEN_KANDIDATEN:
-        try:
-            remove_hook(fname, Type.POST, f"zb_zaehl_{fname}")
-        except Exception:  # noqa: BLE001
-            pass
+    remove_hook(SPIELER_SCHADEN_FUNC, Type.PRE, "zb_rs_vor")
+    remove_hook(FIRE_FUNC, Type.PRE, "zb_feuer")
+    remove_hook(FIRE_FUNC, Type.PRE, "zb_echo_vor")
+    remove_hook(FIRE_FUNC, Type.POST, "zb_echo_nach")
+    remove_hook(RELOAD_FUNC, Type.PRE, "zb_nachladen")
+    for i, fname in enumerate(WURF_FUNCS):
+        remove_hook(fname, Type.POST, f"zb_wurf_{i}")
+    remove_hook(WURF_FERTIG_FUNC, Type.POST, "zb_wurf_fertig")
+    remove_hook(SPIELER_SCHADEN_FUNC, Type.POST, "zb_rs_nach")
     for fname in FFYL_HINEIN + FFYL_HERAUS:
         try:
             remove_hook(fname, Type.POST, f"zb_ffyl_{fname}")
@@ -6961,8 +7490,9 @@ def on_disable() -> None:
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Aussehen zuruecksetzen: {ex}")
     _skin_an = True
+    frieren_aus("Modul deaktiviert")
+    krit_aus("Modul deaktiviert")
     unregister_tracers()
-    zeitspur_alle_zuruecksetzen()
     for zweck in {h[2] for h in _hologramme}:
         holo_entfernen(zweck, "Modul deaktiviert")
     bombe_weg("Modul deaktiviert")
@@ -6984,7 +7514,7 @@ ICON_KLASSEN = {
     "gaige": ("GD_Tulip_Mechro_Streaming_SF", "UI_Tulip_SharedSkillIcons_Mech"),
     "krieg": ("GD_Lilac_Psycho_Streaming_SF", "UI_Lilac_SharedSkillIcons_Psyc"),
 }
-BAUM_TITEL = ("HINDSIGHT", "REWIND", "DETOUR")
+BAUM_TITEL = ("HINDSIGHT", "REWIND", "OVERCLOCK")
 # Skillpfad -> Pfad des Vorlagen-Icons. Pfade statt Objekte: keine Referenzen cachen (CLAUDE.md).
 _icon_original: dict[str, str] = {}
 
@@ -7065,9 +7595,6 @@ def zb(args: Any) -> None:
         case "granate":
             # zb granate [aus] - jedes neue Projektil mit Kollisionsfeldern loggen (v1.29, Wurf)
             granate_spaeher(not (args.args and args.args[0] == "aus"))
-        case "trace":
-            # zb trace - Kollisionspruefung nach unten, fuenf Varianten (v1.22, Wurf)
-            trace_diag()
         case "bombe":
             # zb bombe [weg [1|2|3] | diag | koll 1|2|3 | MESHPFAD [SCALE]] - Bombe ohne den Skill bemuehen
             if args.args and args.args[0] == "weg":
@@ -7116,7 +7643,7 @@ def zb(args: Any) -> None:
             # zb attr [NAME|PFAD] [pawn|weapon|pc] - Attributwert ablesen (Messgroesse ohne Ticker)
             name = args.args[0] if args.args else "WeaponDamage"
             pfad = {"weapondamage": A_SCHADEN, "footspeed": A_TEMPO, "krit": A_KRIT, "magazin": A_MAGAZIN,
-                    "feuerrate": A_FEUERRATE}.get(name.lower(), name)
+                    "feuerrate": A_FEUERRATE, "schildladen": A_SCHILDLADEN}.get(name.lower(), name)
             which = args.args[1] if len(args.args) > 1 else "weapon"
             obj = {"pawn": pawn, "pc": pc, "weapon": pawn.Weapon if pawn else None}.get(which)
             logging.info(f"[ZB] attr {pfad.rsplit('.', 1)[-1]} ({which}) = {attr_value('AttributeDefinition', pfad, obj) if obj else 'kein Objekt'}")
@@ -7137,9 +7664,6 @@ def zb(args: Any) -> None:
         case "koop":
             # zb koop selbst|aus - Testhilfe: eigener Pawn zaehlt als Verbuendeter (v0.95)
             koop_schalter(args.args[0] if args.args else "aus")
-        case "stapeltest":
-            # zb stapeltest [aus] - stapelt das Spiel Instanzen eines Skills? (v1.16)
-            stapeltest(args.args[0] if args.args else "")
         case "immun":
             # zb immun [SEKUNDEN] - Schadensimmunitaet von Hand, zum Messen (v1.12)
             immunitaet(float(args.args[0]) if args.args else 10.0, "von Hand")
@@ -7158,25 +7682,24 @@ def zb(args: Any) -> None:
         case "fasttot":
             # zb fasttot - TESTHILFE, nur Chronomaster: Schild 0, Leben 1 (v0.89)
             fast_tot()
+        case "krit":
+            # zb krit an [SEKUNDEN] | aus - Guaranteed Crits von Hand (v1.72)
+            if args.args and args.args[0] == "aus":
+                krit_aus("Befehl")
+            else:
+                krit_an(float(args.args[1]) if len(args.args) > 1 else 10.0, "Befehl")
+        case "frieren":
+            # zb frieren ki|tick|pop|halten|aus [RADIUS_M] - Spike Time Freeze (v1.70)
+            frieren(args.args[0] if args.args else "ki", float(args.args[1]) if len(args.args) > 1 else 25.0)
         case "fenster":
             # zb fenster - wo die Restzeit des Fensters steht (Diagnose Kurs halten, v0.89)
             fenster_zeigen()
         case "schaden":
-            # zb schaden [reset] - welcher TakeDamage-Kandidat feuert, was filtert der Hook (v0.85)
+            # zb schaden [reset] - was filtert der Schadens-Hook (v0.85)
             if args.args and args.args[0] == "reset":
                 schaden_zuruecksetzen()
             else:
                 schaden_zeigen()
-        case "zeitlupe":
-            # zb zeitlupe [ART 0-3] [FAKTOR] [RADIUS] - Verlangsamen ausprobieren (v0.85)
-            zeitlupe_versuch(int(args.args[0]) if args.args else 1,
-                             float(args.args[1]) if len(args.args) > 1 else 0.3,  # Art 0-4
-                             float(args.args[2]) if len(args.args) > 2 else 15.0)
-        case "stoss":
-            # zb stoss [KRAFT] [ART] [RADIUS] - Rueckstoss-Varianten ausprobieren (1..5, s. Docstring)
-            stoss_versuch(float(args.args[0]) if args.args else 542.0,
-                          int(args.args[1]) if len(args.args) > 1 else 1,
-                          float(args.args[2]) if len(args.args) > 2 else 8.0)
         case "ziel":
             # zb ziel [ANZAHL] [ABSTAND_M] - stehende Testziele spawnen (Rueckstoss messen)
             ziel_spawnen(int(args.args[0]) if args.args else 1,
@@ -7190,10 +7713,6 @@ def zb(args: Any) -> None:
         case "namen":
             # zb namen - alle offenen Funktionsnamen fuer Handgriff 4 auf einmal ins Log
             namen_sammeln()
-        case "dejavu":
-            # zb dejavu - das Kill-Ereignis von Hand melden (ohne den Skillzyklus zu durchlaufen)
-            if not mechanik_dejavu("von Hand"):
-                logging.info(f"[ZB] Deja-vu: nichts gemeldet (Rang {skill_rang('DejaVu')}) | {_kill_skills_zustand()}")
         case "kopie":
             kopie()
         case "baum":
@@ -7218,12 +7737,12 @@ def zb(args: Any) -> None:
             logging.info(
                 "[ZB] zb status | legen | zuenden | ende [1|2|3] | loeschen | bombe [weg [1|2|3]|diag|koll 1|2|3|MESH [SCALE]] | meshes [FILTER]"
                 " | rang [NAME] | wirkung an|aus NAME [GRAD] | attr [NAME|PFAD] [pawn|weapon|pc] | baum | pakete | askill | skill an|aus|grad N|stack N|status [PFAD] | kopie | spur"
-                " | props pawn|pc|weapon FILTER | funcs KLASSE [FILTER] | enum [FILTER] | namen | gegner [RADIUS] | ziel [N] [ABSTAND] | stoss [KRAFT] [ART 1-8] | schaden [reset] | zeitlupe [ART 0-4] [FAKTOR] | ffyl | fenster | holo [SEKUNDEN] | koop selbst|aus | schatten [los] | effekte an|aus|log|test | immun [S] | ammo | dejavu"
+                " | props pawn|pc|weapon FILTER | funcs KLASSE [FILTER] | enum [FILTER] | namen | gegner [RADIUS] | ziel [N] [ABSTAND] | schaden [reset] | ffyl | fenster | holo [SEKUNDEN] | koop selbst|aus | schatten [los] | effekte an|aus|log|test | immun [S] | ammo"
                 " | xp N | respec | cash N | fasttot (die letzten vier: Testhilfen, nur Chronomaster)"
             )
 
 
-zb.add_argument("action", choices=["status", "legen", "zuenden", "ende", "loeschen", "bombe", "meshes", "rang", "wirkung", "attr", "props", "funcs", "enum", "namen", "gegner", "ziel", "stoss", "schaden", "zeitlupe", "ffyl", "fasttot", "fenster", "holo", "koop", "schatten", "effekte", "immun", "stapeltest", "ammo", "dejavu", "spur", "kopie", "baum", "pakete", "askill", "skill", "xp", "respec", "cash", "trace", "granate", "icons", "skin", "fps"])
+zb.add_argument("action", choices=["status", "legen", "zuenden", "ende", "loeschen", "bombe", "meshes", "rang", "wirkung", "attr", "props", "funcs", "enum", "namen", "gegner", "ziel", "schaden", "ffyl", "fasttot", "fenster", "frieren", "krit", "holo", "koop", "schatten", "effekte", "immun", "ammo", "spur", "kopie", "baum", "pakete", "askill", "skill", "xp", "respec", "cash", "granate", "icons", "skin", "fps"])
 zb.add_argument("args", nargs="*")
 
 build_mod(
