@@ -458,6 +458,37 @@ Unverändert bleiben:
 4. ~~Kartentexte, `SKILLS.md`, README, Baumname~~ — erledigt (v1.66). Offen: eigene Icons statt der geerbten Platzhalter (`SKILL_ICONS`) und Skilltexte im BL2-Stil (`feedback.md`, I11).
 5. **Bestehende Spielstände (Nutzer: „müssen wir wohl“):** Die Punkte in entfernten Skills gingen sonst verloren oder hingen in leeren Feldern. Geplant ist ein **automatischer Respec** beim ersten Laden — **noch nicht gebaut**. Bis dahin rät die README zum Respec von Hand.
 
+### 10. Class Mods (v1.75, Nutzer 2026-10-11)
+
+Regel des Nutzers: **Die drei Skills eines Mods müssen zusammenspielen.** Jeder Mod beschreibt eine Spielweise. Der Grundwert kommt aus Slot 0 einer Zer0-Vorlage, deren Skalierung stimmt. Namen nach dem Skill mit den meisten Punkten (Prefix 01/02/03), sonst der Grundname.
+
+| Mod | Skills (Slot 1–3) | Warum sie zusammenspielen | Grundwert (Vorlage) | Namen 01/02/03 |
+|---|---|---|---|---|
+| Historian | Paradox, Tension, Long-Term Memory | längeres Fenster → mehr Tension-Stacks → mehr Schaden → Paradox wiederholt mehr | Waffenschaden, alle Waffen (Sniper) | Recursive / Patient / Eternal |
+| Executioner | Guaranteed Crits, Memory, Aftermath | Zünden → Krit-Fenster + Waffenschaden, Memory hebt den Krit-Schaden | Krit-Bonus (Killer) | Precise / Cold / Brutal |
+| Avenger | Return to Sender, Borrowed Health, Refresh | einstecken → zurückschlagen, sofort heilen, Rückschlag-Kills tilgen die Schuld | Max. Leben (Survivor) | Spiteful / Indebted / Renewed |
+| Gunslinger | Echo Bullet, Dimensional Loop, Haste Stacks | zwei Doppelschuss-Quellen, Haste: Feuerrate (schneller zum Echo) und Nachladen (schneller zum Loop) | Nachladen (Professional) | Echoing / Looping / Hasty |
+| Reaper | Stay the Course, Recurrence, Refill | Kill-Kette im Fenster: verlängern, Magazin füllen, Bonus danach | Feuerrate, alle Waffen (Stalker) | Relentless / Recurring / Hungry |
+| Grenadier | Grenade Recall, Full Refund, Standby | Granaten kommen zurück oder werden erstattet, Standby verkürzt den Zyklus | Cooldown-Rate (Spy) | Boomerang / Thrifty / Ready |
+| Warden | Time Capsule, Afterimage, Ambush | zwei Hologramme ziehen das Feuer → Ambush greift fast immer | Max. Leben (Survivor) | Timeless / Phantom / Lurking |
+
+- Open Road ist in keinem Mod (reiner Werte-Skill).
+
+**Legendäre Fassungen (v1.77, Effekte v1.78):** 5 Skills (die 3 oben + 2), weiße Effektzeile, rotes Zitat.
+
+| Legendär | + Skills | Effekt | Zitat |
+|---|---|---|---|
+| Historian | Recurrence, Stay the Course | Tension stapelt bis 20 | "History repeats itself." |
+| Executioner | Ambush, Recurrence | Kill im Krit-Fenster verlängert es um 1 s | "Time's up." |
+| Avenger | Standby, Time Capsule | Return to Sender explodiert beim Angreifer | "What goes around comes around." |
+| Gunslinger | Memory, Refill | Doppelschüsse werden Dreifachschüsse | "Why stop at two?" |
+| Reaper | Haste Stacks, Aftermath | Kill bei liegender Bombe −1 s Cooldown | "Every death buys time." |
+| Grenadier | Haste Stacks, Refresh | Granaten bei liegender Bombe kommen immer zurück | "Boom. Again." |
+| Warden | Standby, Refresh | Hologramme explodieren beim Verschwinden | "Leave something behind." |
+- **Bonus nur ab 1 Punkt** (Spielverhalten, gemessen v1.75b).
+- **Technik:** `docs/spikes.md`, „Class Mods“. Seltenheiten 1–4 (weiß bis lila; weiße Mods haben wie bei Zer0 nur den Grundwert).
+- **Bezugsquellen (v1.76):** Beute, Truhen, Zeds Automat und Belohnungen über Zer0s umgelenkte Unterpools. Offen sind legendäre Mods, DLC-Pools und der Koop mit einem echten Zer0 (bekäme unsere Mods).
+
 ### 9.4 Kandidaten für die zwei offenen Plätze (Vorschlag Claude, nicht abgestimmt)
 
 **Hindsight T3** (Thema: solange die Bombe liegt)

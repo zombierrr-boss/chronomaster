@@ -55,7 +55,9 @@ Technik mit Belegen in docs/spikes.md. Die wichtigsten fuer dieses Modul:
   - find_all nie in haeufigen Ticks (geht immer die ganze Objektliste durch).
 """
 
+import json
 import math
+import os
 import random
 import time
 from dataclasses import dataclass
@@ -66,7 +68,7 @@ from mods_base import ENGINE, Game, build_mod, command
 from unrealsdk import logging
 from unrealsdk.unreal import UObject, WeakPointer
 
-__version__ = "1.73"
+__version__ = "1.80"
 __author__ = "zombierrr"
 
 # Der Charaktername ist ein Platzhalter (plan.md, Anhang A). Seit D4 ist DIESE Konstante die einzige
@@ -1229,6 +1231,7 @@ def verpuffen(grund: str) -> None:
         return
     logging.info(f"[ZB] verpufft: Cooldown {rest:.1f}s -> halbiert")
     cooldown_setzen(pc, rest / 2.0)
+    reaper_cooldown(pc, "verpufft")   # v1.78 Legendary Reaper
 
 
 def _on_skill_started(obj: UObject, args: Any, ret: Any, func: Any) -> None:
@@ -1296,6 +1299,7 @@ def zuenden_komplett(pc: UObject) -> None:
     try_call("ResetActionSkill", pc.ResetActionSkill)
     try_call("StartActiveSkillCooldown", pc.StartActiveSkillCooldown)
     logging.info(f"[ZB] Cooldown laeuft: {cooldown_rest(pc):.1f}s")
+    reaper_cooldown(pc, "gezuendet")   # v1.78 Legendary Reaper
 
 
 # ---------------------------------------------------------------- Schattenanker (Capstone Baum 2, v0.95)
@@ -2175,6 +2179,12 @@ S_GEBAUT: dict[str, str] = {
     "Unendlich": "",                                         # v1.58 Infinite, im Spiel bestaetigt
     "GeliehenesLeben": "",                                   # v1.59 Borrowed Health, im Spiel bestaetigt
     "Zuruecksenden": "",                                     # v1.60 Return to Sender, im Spiel bestaetigt
+    "GranatenRueckruf": "",                                  # v1.68 Grenade Recall, im Spiel bestaetigt
+    "Endspurt": "",                                          # v1.69 Crunch Time, Faktor gemessen
+    "Zeitstillstand": "",                                    # v1.71 Time Freeze, im Spiel bestaetigt
+    "SichereKrits": "",                                      # v1.72 Guaranteed Crits, im Spiel bestaetigt
+    # v1.78b: Die vier fehlten hier - ihre Karten zeigten seit v1.68-v1.72 (auch im Release 1.73!) noch
+    # "[Not functional yet - mechanic coming.]" (Nutzer-Screenshot 2026-10-11).
 }
 
 
@@ -2633,12 +2643,76 @@ def skill_rang(name: str) -> int:
     d = skill_def(name)
     if pc is None or d is None:
         return 0
+    basis = 0
     for fn in ("GetSkillGrade", "GetSkillGradeByDef"):
         try:
-            return int(getattr(pc, fn)(d))
+            basis = int(getattr(pc, fn)(d))
+            break
         except Exception as ex:  # noqa: BLE001
             logging.error(f"[ZB] Rang {name} ueber {fn}: {ex}")
+    # v1.74e: GetSkillGrade zaehlt nur die verteilten Punkte. Den Class-Mod-Bonus kennt die laufende
+    # Skill-Instanz: Grade = wirksam, GradeBaseValue = Punkte (Test v1.74d: Paradox 5 / 1, GetSkillGrade 1).
+    # Ohne Instanz (Haste Stacks: den Kill-Skill schalten wir selbst) bleibt es bei den Punkten.
+    sm = skill_manager()
+    if sm is not None:
+        try:
+            inst = sm.GetActiveSkillForInstigatorByDefinition(pc, d)
+            if inst is not None:
+                return max(basis, int(inst.Grade))
+        except Exception:  # noqa: BLE001
+            pass
+    # v1.75e: ohne Instanz (Haste Stacks) den ausgeruesteten Class Mod fragen - WillowClassMod.IsModifyingSkill
+    # (SkillDef, out Amount) -> bool (zb funcs, v1.75d). Wie im Spiel nur ab 1 Punkt (Test v1.75b: 0/5 bleibt 0).
+    if basis > 0 and pc.Pawn is not None:
+        basis += _klassenmod_bonus(pc.Pawn, d)
+    return basis
+
+
+def _klassenmod_bonus(pawn: UObject, d: UObject) -> int:
+    """Bonus des ausgeruesteten Class Mods auf diesen Skill (0 ohne Mod). Ausgeruestete Items haengen in
+    InvManager.ItemChain (wie _granate)."""
+    try:
+        item = pawn.InvManager.ItemChain
+        n = 0
+        while item is not None and n < 32:
+            if item.Class.Name == "WillowClassMod":
+                res = item.IsModifyingSkill(d, 0)
+                teile = res if isinstance(res, tuple) else (res,)
+                if teile and bool(teile[0]) and len(teile) > 1:
+                    return int(teile[1])
+                return 0
+            item = item.Inventory
+            n += 1
+    except Exception as ex:  # noqa: BLE001
+        global _km_bonus_fehler
+        if not _km_bonus_fehler:
+            _km_bonus_fehler = True
+            logging.error(f"[ZB] Class-Mod-Bonus: {ex}")
     return 0
+
+
+_km_bonus_fehler = False
+
+
+def legendaer(name: str) -> bool:
+    """v1.78: Ist der Legendary <name> ausgeruestet? Wie _klassenmod_bonus ueber InvManager.ItemChain, nur
+    Eigenschaften. Fuer die Effekte der legendaeren Mods (docs/skills.md 10)."""
+    pc = local_pc()
+    pawn = pc.Pawn if pc is not None else None
+    if pawn is None:
+        return False
+    try:
+        item = pawn.InvManager.ItemChain
+        n = 0
+        while item is not None and n < 32:
+            if item.Class.Name == "WillowClassMod":
+                d = item.DefinitionData.ItemDefinition
+                return d is not None and d.Name == f"ClassMod_Chronomaster_Legendary{name}"
+            item = item.Inventory
+            n += 1
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 def wirkung_an(name: str, grade: int | None = None) -> bool:
@@ -2775,6 +2849,11 @@ TICK_FUNC = "WillowGame.WillowPlayerController:PlayerTick"  # Klasse in WillowGa
 TICK_SEKUNDEN = 1.0
 UU_JE_METER = 100.0
 GESPANNT_STACKS_MAX = 10
+GESPANNT_STACKS_MAX_LEGENDAER = 20   # v1.78 Legendary Historian
+
+
+def _gespannt_max() -> int:
+    return GESPANNT_STACKS_MAX_LEGENDAER if legendaer("Historian") else GESPANNT_STACKS_MAX
 
 _tick_akku = 0.0
 _tick_sekunden = 0        # Sekunden seit dem Legen (nur Anzeige)
@@ -2826,14 +2905,15 @@ def _ticker_sekunde_rest(pc: UObject) -> None:
 
     # Gespannte Zeit: ein Stack je Sekunde, Grad = Rang x Stacks
     rang_gz = skill_rang("GespannteZeit")
-    if rang_gz > 0 and _gespannt_stacks < GESPANNT_STACKS_MAX:
+    gz_max = _gespannt_max()
+    if rang_gz > 0 and _gespannt_stacks < gz_max:
         _gespannt_stacks += 1
         stapel_setzen("GespannteZeit", _gespannt_stacks)   # v1.18: ein Stack = eine Instanz (HUD)
 
     uu = anker_abstand(pawn)
     logging.info(
         f"[ZB] Ticker {_tick_sekunden}s | Anker {(uu or 0.0) / UU_JE_METER:.1f} m"
-        f" | Gespannte Zeit {_gespannt_stacks}/{GESPANNT_STACKS_MAX}"
+        f" | Gespannte Zeit {_gespannt_stacks}/{gz_max}"
         f" | WeaponDamage(Waffe)={attr_value('AttributeDefinition', A_SCHADEN, pawn.Weapon) if pawn.Weapon else '-'}"
     )
 
@@ -2899,11 +2979,44 @@ def _on_notify_killed_enemy(obj: UObject, args: Any, ret: Any, func: Any) -> Non
             mechanik_zeitschleife_kill()   # v1.65: Time Loop laden
         except Exception as ex:  # noqa: BLE001
             logging.error(f"[ZB] Time Loop Kill: {ex}")
+        try:
+            legendaer_kill()   # v1.78: Legendary Executioner / Reaper
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Legendaer Kill: {ex}")
     if _state != ZUSTAND_GELEGT or not ist_chronomaster(pc):
         return
     _kills += 1
     logging.info(f"[ZB] Kill {_kills} mit liegender Bombe: {name}")
     mechanik_kurs_halten()  # v0.90
+
+
+# v1.78: Effekte der legendaeren Mods, die am Kill haengen.
+LEG_KRIT_JE_KILL_S = 1.0       # Legendary Executioner
+LEG_COOLDOWN_JE_KILL_S = 1.0   # Legendary Reaper
+_reaper_bank = 0.0             # Sekunden, die beim naechsten Cooldown-Start abgezogen werden
+
+
+def legendaer_kill() -> None:
+    global _krit_rest, _reaper_bank
+    if _krit_rest > 0 and legendaer("Executioner"):
+        _krit_rest += LEG_KRIT_JE_KILL_S
+        logging.info(f"[ZB] Legendary Executioner: Kill im Krit-Fenster -> noch {_krit_rest:.1f} s")
+    if _state == ZUSTAND_GELEGT and legendaer("Reaper"):
+        _reaper_bank += LEG_COOLDOWN_JE_KILL_S
+        logging.info(f"[ZB] Legendary Reaper: Kill bei liegender Bombe -> {_reaper_bank:.0f} s vom naechsten Cooldown")
+
+
+def reaper_cooldown(pc: UObject, grund: str) -> None:
+    """Nach dem Cooldown-Start (Zuenden/Verpuffen): die gesammelten Sekunden abziehen."""
+    global _reaper_bank
+    if _reaper_bank <= 0:
+        return
+    rest = cooldown_rest(pc)
+    if rest > 0:
+        neu = max(0.0, rest - _reaper_bank)
+        cooldown_setzen(pc, neu)
+        logging.info(f"[ZB] Legendary Reaper ({grund}): Cooldown {rest:.1f} -> {neu:.1f} s (-{_reaper_bank:.0f})")
+    _reaper_bank = 0.0
 
 
 # --- Kill-Stacks (v1.13, Nutzerwunsch 2026-09-26) -------------------------------------------------
@@ -3072,7 +3185,15 @@ def _on_fire_ammunition(obj: UObject, args: Any, ret: Any, func: Any) -> None:
 # und erstattet die verbrauchte Munition (Pool und ReloadCnt gemeinsam, Rezept Refill). Messung: Gegner-
 # Treffer (WillowAIPawn:TakeDamage) im Fenster ECHO_MESS_S nach dem Echo- und nach dem Schuss davor.
 # HUD: Zaehler = Instanzen des Effekt-Skills Echokugel_Wirkung (stapel_setzen), Platz 2.
-ECHO_JEDER = (10, 9, 8, 6, 5)   # Rang 1..5: jeder N-te Schuss
+ECHO_JEDER = (10, 9, 8, 6, 5)   # Rang 1..5: jeder N-te Schuss (= _echo_jeder, nur noch zur Doku)
+
+
+def _echo_jeder(rang: int) -> int:
+    """v1.74g: jeder N-te Schuss nach der Formel der Kartenzeile (10 - 1,25 je Rang), kaufmaennisch
+    gerundet, mindestens 2. Rang 1-5 ergibt genau ECHO_JEDER; mit Class Mod geht es weiter (6 -> 4,
+    7 -> 3, ab 8 -> 2). Bis v1.74f blieb es ueber Rang 5 bei jedem 5. Schuss (Nutzer: "egal wieviele
+    Punkte ... immer nur jeder 5te")."""
+    return max(2, math.floor(10.0 - 1.25 * (max(1, rang) - 1) + 0.5))
 ECHO_MESS_S = 0.25
 _rang_echo_cache = 0
 _echo_zaehler = 0
@@ -3167,11 +3288,19 @@ def _on_echo_pre(obj: UObject, args: Any, ret: Any, func: Any) -> None:
             stapel_setzen("Dimensionsschleife", _loop_rest)   # HUD: verbleibende Doppelschuesse
     if _rang_echo_cache > 0:
         _echo_zaehler += 1
-        jeder = ECHO_JEDER[min(_rang_echo_cache, len(ECHO_JEDER)) - 1]
+        jeder = _echo_jeder(_rang_echo_cache)
         if _echo_zaehler >= jeder:
             _echo_zaehler = 0
             grund.append("Echo Bullet")
-        stapel_setzen("Echokugel", _echo_zaehler)   # HUD: 1..N-1, beim Echo 0
+        # v1.74h: HUD zaehlt RUECKWAERTS - Schuesse bis zum naechsten Echo (wie der Kartentext). 1 heisst
+        # "der naechste Schuss ist doppelt", nach dem Echo steht wieder N. Nutzer zu v1.74g: Nach dem
+        # Doppelschuss stand noch x4/x5 da und wirkte, als kaeme der Doppelschuss erst noch.
+        stapel_setzen("Echokugel", jeder - _echo_zaehler)
+        if _trace:   # v1.74f: Nutzer sah den Zaehler bis 5 laufen, obwohl schon doppelt geschossen wurde
+            wirk = skill_def("Echokugel", wirkung=True)
+            logging.info(f"[ZB] Echo-Spur: Zaehler {_echo_zaehler}/{jeder} (Rang-Cache {_rang_echo_cache}),"
+                         f" Instanzen gemerkt {_ks_instanzen.get('Echokugel', 0)}, aktiv {skill_aktiv(wirk) if wirk else '-'},"
+                         f" Echo {'JA' if 'Echo Bullet' in grund else 'nein'}")
     if grund:
         _echo_jetzt = True
         _echo_grund = " + ".join(grund)
@@ -3197,9 +3326,12 @@ def _on_echo_post(obj: UObject, args: Any, ret: Any, func: Any) -> None:
             w.ReloadCnt = mag + kosten
         vor_mag = int(w.ReloadCnt)
         vor_pool = float(pool.CurrentValue) if pool is not None else -1.0
+        # v1.78 Legendary Gunslinger: Doppelschuesse werden Dreifachschuesse (ein weiterer FireAmmunition)
+        zusatz = 2 if legendaer("Gunslinger") else 1
         _echo_im_zweiten = True
         try:
-            w.FireAmmunition()
+            for _ in range(zusatz):
+                w.FireAmmunition()
         finally:
             _echo_im_zweiten = False
         verbraucht = vor_mag - int(w.ReloadCnt)
@@ -3211,7 +3343,7 @@ def _on_echo_post(obj: UObject, args: Any, ret: Any, func: Any) -> None:
             pool.CurrentValue = float(pool.CurrentValue) - kosten
             w.ReloadCnt = int(w.ReloadCnt) - kosten
         _echo_mess[:] = ["echo", ECHO_MESS_S, 0]
-        logging.info(f"[ZB] {_echo_grund}: zweiter Schuss ausgeloest - verbraucht {verbraucht}, erstattet;"
+        logging.info(f"[ZB] {_echo_grund}: {'zweiter und dritter Schuss' if zusatz == 2 else 'zweiter Schuss'} ausgeloest - verbraucht {verbraucht}, erstattet;"
                      f" Magazin {mag} -> {int(w.ReloadCnt)}, Pool {vor_pool:.0f} -> {float(pool.CurrentValue) if pool is not None else -1:.0f}")
     except Exception as ex:  # noqa: BLE001
         _echo_im_zweiten = False
@@ -3336,9 +3468,10 @@ _rueckruf_offen: list[list[float]] = []   # je zurueckkehrende Granate [Restzeit
 
 def _rueckruf_wurf() -> None:
     rang = skill_rang("GranatenRueckruf")
-    if rang <= 0:
+    immer = _state == ZUSTAND_GELEGT and legendaer("Grenadier")   # v1.78 Legendary Grenadier
+    if rang <= 0 and not immer:
         return
-    chance = RUECKRUF_JE_RANG * rang
+    chance = 1.0 if immer else RUECKRUF_JE_RANG * rang
     wurf = random.random()
     if wurf >= chance:
         logging.info(f"[ZB] Grenade Recall: kein Rueckruf ({wurf:.2f} >= {chance:.2f})")
@@ -5023,6 +5156,9 @@ def mechanik_ruecksenden_gelegt() -> None:
     _rs_ohne_urheber, _rs_vor = 0.0, -1.0
 
 
+LEG_AVENGER_RADIUS_UU = 500.0   # v1.78 Legendary Avenger: 5 m um den Angreifer
+
+
 def mechanik_ruecksenden_gezuendet() -> bool:
     global _eigen
     if _rs_rang <= 0:
@@ -5048,6 +5184,14 @@ def mechanik_ruecksenden_gezuendet() -> bool:
         _eigen = True   # eigene Treffer nicht von Paradoxon buchen lassen
         try:
             logging.info(f"[ZB] Return to Sender: {ziel.Name} erlitten {erlitten:.0f} -> {_treffer(ziel, pc, wert, 0.0, ziel.Location, False)}")
+            if legendaer("Avenger"):   # v1.78: explodiert beim Angreifer, trifft auch Gegner daneben
+                o = ziel.Location
+                ort = _vec(o.X, o.Y, o.Z)
+                proj = _projektil_traeger(ort)
+                if proj is not None and pc.Pawn is not None:
+                    element = _granaten_element(_granate(pc.Pawn))
+                    explodieren(proj, "Legendary Avenger", SPRENGSATZ_EXPLOSION[element], wert, LEG_AVENGER_RADIUS_UU,
+                                f"Rueckschlag {wert:.0f} bei {ziel.Name}", traeger=proj, mitte=ort)
         finally:
             _eigen = False
         n += 1
@@ -5374,6 +5518,23 @@ def holo_spawnen(ort: Any, zweck: str, dauer: float) -> UObject | None:
     return neu
 
 
+LEG_WARDEN_RADIUS_UU = 600.0   # v1.78 Legendary Warden: 6 m
+LEG_WARDEN_FAKTOR = 1.0        # x Granatenschaden
+
+
+def warden_explosion(ort: Any, zweck: str) -> None:
+    pc = local_pc()
+    if pc is None or pc.Pawn is None or not legendaer("Warden"):
+        return
+    granate = _granate(pc.Pawn)
+    element = _granaten_element(granate)
+    basis, quelle = _granaten_schaden(pc.Pawn, granate)
+    proj = _projektil_traeger(ort)
+    if proj is not None:
+        explodieren(proj, "Legendary Warden", SPRENGSATZ_EXPLOSION[element], basis * LEG_WARDEN_FAKTOR,
+                    LEG_WARDEN_RADIUS_UU, f"Hologramm {zweck}, {element}, {basis:.0f} ({quelle})", traeger=proj, mitte=ort)
+
+
 def _holo_weg(eintrag: list, grund: str) -> None:
     """Ein Hologramm entfernen - ueber Died(), den FL4K-belegten Weg."""
     holo = eintrag[0]()
@@ -5387,6 +5548,10 @@ def _holo_weg(eintrag: list, grund: str) -> None:
     if grund != "Modul deaktiviert":   # Phase 8 (v1.04): es zerfaellt violett
         o = holo.Location
         effekt(f"Hologramm {eintrag[2]} zerfaellt", FX_VERPUFFEN, _vec(o.X, o.Y, o.Z), 300.0)
+        try:
+            warden_explosion(_vec(o.X, o.Y, o.Z), eintrag[2])   # v1.78 Legendary Warden
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Legendary Warden: {ex}")
     try:
         holo.Died(Killer=None, DamageType=dmg, HitLocation=holo.Location)
     except Exception as ex:  # noqa: BLE001
@@ -6074,6 +6239,10 @@ def _on_player_tick(obj: UObject, args: Any, ret: Any, func: Any) -> None:
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Unspent Time: {ex}")
     try:
+        _km_pool_tick(dt)  # Class Mods in Beute/Haendler/Belohnungen (v1.76)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod-Pools: {ex}")
+    try:
         _krit_tick(dt)  # Guaranteed Crits (v1.72)
     except Exception as ex:  # noqa: BLE001
         logging.error(f"[ZB] Guaranteed Crits: {ex}")
@@ -6317,6 +6486,7 @@ def ensure_seventh_character() -> None:
         # MUSS vor dem Laden eines Spielstands stehen - deshalb hier und nicht spaeter.
         ensure_skilltree(class_def)
         ensure_cooldown_pool(class_def)
+        klassenmods_beim_start("Modulstart")   # v1.74b: vor dem Spielstand, sonst verschwinden Class Mods
 
         # Stufe 2 - DLC-Registrierung; braucht GD_TulipPackageDef, das beim Start noch fehlt. Wird im
         # Auswahlmenue nachgeholt (Commit-Hook), dort hat es 19:2x funktioniert: Figur Zer0, Klasse
@@ -6587,6 +6757,7 @@ def _on_build_character_list(obj: UObject, args: Any, ret: Any, func: Any) -> No
     CommitSelectableCharacters kommt hier auch vorbei, wer einen VORHANDENEN Charakter laedt.
     Reine Rueckfallebene: im Normalfall steht die Kette schon seit dem Modulstart."""
     _retry_skilltree("BuildCharacterList")
+    klassenmods_beim_start("BuildCharacterList")   # v1.74b: Rueckfallebene, falls der Start sie nicht schaffte
     try:
         icons_nachholen("BuildCharacterList")   # v1.38: DLC-Icons
     except Exception as ex:  # noqa: BLE001
@@ -6619,6 +6790,8 @@ def register_tracers() -> None:
     for i, fname in enumerate(WURF_FUNCS):                                             # Time Loop, v1.65
         add_hook(fname, Type.POST, f"zb_wurf_{i}", _make_wurf_hook(fname))
     add_hook(WURF_FERTIG_FUNC, Type.POST, "zb_wurf_fertig", _on_wurf_fertig)           # Time Loop, v1.65d
+    add_hook(KM_SPEICHER_FUNC, Type.PRE, "zb_km_speichern", _on_km_speichern)         # Class Mods, v1.74c
+    add_hook(KM_LADEN_FUNC, Type.PRE, "zb_km_laden", _on_km_laden)                    # Class Mods, v1.74c
     add_hook(SPIELER_SCHADEN_FUNC, Type.POST, "zb_rs_nach", _on_spieler_schaden_post)  # Return to Sender, v1.60
     for fname in FFYL_HINEIN + FFYL_HERAUS:  # v0.89: Es war nie passiert
         add_hook(fname, Type.POST, f"zb_ffyl_{fname}", _make_ffyl_hook(fname, fname in FFYL_HINEIN))
@@ -6654,6 +6827,8 @@ def unregister_tracers() -> None:
     for i, fname in enumerate(WURF_FUNCS):
         remove_hook(fname, Type.POST, f"zb_wurf_{i}")
     remove_hook(WURF_FERTIG_FUNC, Type.POST, "zb_wurf_fertig")
+    remove_hook(KM_SPEICHER_FUNC, Type.PRE, "zb_km_speichern")
+    remove_hook(KM_LADEN_FUNC, Type.PRE, "zb_km_laden")
     remove_hook(SPIELER_SCHADEN_FUNC, Type.POST, "zb_rs_nach")
     for fname in FFYL_HINEIN + FFYL_HERAUS:
         try:
@@ -7492,11 +7667,643 @@ def on_disable() -> None:
     _skin_an = True
     frieren_aus("Modul deaktiviert")
     krit_aus("Modul deaktiviert")
+    if _km_pools_an:
+        klassenmod_pools(False, "Modul deaktiviert")
     unregister_tracers()
     for zweck in {h[2] for h in _hologramme}:
         holo_entfernen(zweck, "Modul deaktiviert")
     bombe_weg("Modul deaktiviert")
     logging.info("[ZB] Modul deaktiviert")
+
+
+# --- Class Mods: Spike (v1.74, Testbefehl `zb klassenmod [status]`) ----------------------------------
+# feedback.md I8. Dump (2026-10-04/11): ClassModDefinition GD_ClassMods.A_Item_Assassin.ClassMod_Assassin_Ninja
+#   RequiredPlayerClass = GD_PlayerClassId.Assassin; AttributeSlotEffects(0) = Werte-Bonus, (1)-(3) = Skill-Boni
+#   auf InventoryAttributeDefinition GD_Assassin_Skills.SkillGradeModifiers.<Skill> (MT_PostAdd, bRunEffectsAsSkill).
+#   Ein solches Attribut hat ContextResolverChain = [PlayerController..., SkillAttributeContextResolver] mit dem
+#   Feld AssociatedSkill (im Dump None, aus AssociatedSkillPathName aufgeloest) und ValueResolverChain (Grade).
+#   Balance: BalDef_ClassMod_Assassin_04_VeryRare -> BaseDefinition BalDef_ClassMod_Assassin (ClassModDefinitions,
+#   9 Zer0-Mods). Spawnen wie im BO2-Projekt: ItemPool-CDO.SpawnBalancedInventoryFromInventoryBalanceDefinition.
+# OFFEN und im Spiel zu messen: Teilt die Attribut-Kopie die Resolver mit dem Original (dann eigene bauen)?
+# Nimmt der Resolver einen Laufzeit-Skill? Laesst sich der Mod ausruesten, steigt der Rang? Ueberlebt er
+# Speichern und Laden?
+KM_ATTR_VORLAGE = "GD_Assassin_Skills.SkillGradeModifiers.Backstab"
+KM_ATTR_OUTER = "GD_Assassin_Skills.SkillGradeModifiers"
+KM_DEF_OUTER = "GD_ClassMods.A_Item_Assassin"
+KM_SKILL_VORLAGE = "GD_ClassMods.A_Item_Assassin.ClassMod_Assassin_Ninja"   # Slots 1-3 = Skill-Slots (Dump)
+KM_PREFIX_OUTER = "GD_ClassMods.Prefix_Assassin"
+KM_PREFIX_VORLAGEN = ("Prefix_Ninja_00_Ninja", "Prefix_Ninja_01_ShadowNinja",
+                      "Prefix_Ninja_02_BloodiedNinja", "Prefix_Ninja_03_LethalNinja")
+KM_BAL_BASIS_VORLAGE = "GD_ItemGrades.ClassMods.BalDef_ClassMod_Assassin"
+KM_BAL_OUTER = "GD_ItemGrades.ClassMods"
+KM_STUFEN = ("01_Common", "02_Uncommon", "03_Rare", "04_VeryRare")   # weiss, gruen, blau, lila
+KM_CLASS_ID = "GD_PlayerClassId.Chronomant"
+
+
+# v1.75: das Set (plan "Class-Mod-Set", Nutzer 2026-10-11: die drei Skills eines Mods muessen zusammenspielen).
+# Grundwert = Slot 0 einer Zer0-Vorlage (deren Skalierung stimmt), Slots 1-3 = Skill-Slots nach dem Ninja.
+# Namen wie im Original NICHT nach Seltenheit, sondern nach dem Skill mit den meisten Punkten (Dump: Prefix
+# 01/02/03 haben Expressions auf ClassMod_SlotRank_Skill1/2/3, 00 ist der Grundname).
+@dataclass
+class Klassenmod:
+    name: str                      # Grundname (Prefix 00)
+    skills: tuple[str, str, str]   # interne Skill-Schluessel, Slot 1-3
+    namen: tuple[str, str, str]    # Prefix 01-03: Skill 1/2/3 liegt vorn
+    vorlage: str                   # Zer0-Mod, dessen Slot 0 (Grundwert) und Kartenzeile wir nehmen
+    alle_waffen: bool = False      # Vorlage gilt nur fuer eine Waffenart (ConstraintAttribute) -> aufheben
+
+    @property
+    def obj(self) -> str:
+        return f"ClassMod_Chronomaster_{self.name}"
+
+
+KLASSENMODS = (
+    Klassenmod("Historian", ("Paradoxon", "GespannteZeit", "Langzeitgedaechtnis"),
+               ("Recursive Historian", "Patient Historian", "Eternal Historian"), "Sniper", alle_waffen=True),
+    Klassenmod("Executioner", ("SichereKrits", "Gedaechtnis", "Nachwirkung"),
+               ("Precise Executioner", "Cold Executioner", "Brutal Executioner"), "Killer"),
+    Klassenmod("Avenger", ("Zuruecksenden", "GeliehenesLeben", "Auffrischung"),
+               ("Spiteful Avenger", "Indebted Avenger", "Renewed Avenger"), "Survivor"),
+    Klassenmod("Gunslinger", ("Echokugel", "Dimensionsschleife", "Eile"),
+               ("Echoing Gunslinger", "Looping Gunslinger", "Hasty Gunslinger"), "Professional"),
+    Klassenmod("Reaper", ("KursHalten", "Wiederkehr", "Nachfuellen"),
+               ("Relentless Reaper", "Recurring Reaper", "Hungry Reaper"), "Stalker", alle_waffen=True),
+    Klassenmod("Grenadier", ("GranatenRueckruf", "VolleRueckerstattung", "Bereitschaft"),
+               ("Boomerang Grenadier", "Thrifty Grenadier", "Ready Grenadier"), "Spy"),
+    Klassenmod("Warden", ("Zeitkapsel", "Nachbild", "Hinterhalt"),
+               ("Timeless Warden", "Phantom Warden", "Lurking Warden"), "Survivor"),
+)
+KM_SKILLS = tuple(s for km in KLASSENMODS for s in km.skills)   # alle 21, fuer Attribute und Diagnose
+
+
+def _km_attr(skill: str) -> UObject | None:
+    """Grad-Attribut fuer einen unserer Skills: Kopie von Zer0s Backstab, Resolver auf unseren Skill."""
+    d = skill_def(skill)
+    if d is None:
+        logging.error(f"[ZB] Klassenmod: Skill {skill} fehlt")
+        return None
+    attr = _copy("InventoryAttributeDefinition", KM_ATTR_VORLAGE, KM_ATTR_OUTER, f"ZB_Grad_{skill}")
+    for i, c in enumerate(list(attr.ContextResolverChain)):
+        if c is None or c.Class.Name != "SkillAttributeContextResolver":
+            continue
+        if c.Outer is None or c.Outer._path_name() != attr._path_name():
+            # geteilt mit Zer0s Attribut (v1.74 gemessen) - eigene Kopie, sonst traefe es Zer0s Mods
+            eigen = unrealsdk.construct_object("SkillAttributeContextResolver", attr, f"ZB_Resolver_{skill}", template_obj=c)
+            _root(eigen)
+            attr.ContextResolverChain[i] = eigen
+            c = eigen
+        c.AssociatedSkill = d
+    return attr
+
+
+# v1.74b: Die Skill-Zeilen auf der Karte ("+4 Backstab") kommen aus
+# GD_AttributePresentation._AttributeList.DefaultPresentationList (Dump: 338 Eintraege, Index 316 =
+# AttrPresent_Backstab mit Attribute = Backstab-Grad-Attribut, Description "Backstab Skill").
+KM_PRAES_VORLAGE = "GD_AttributePresentation.Skills_Assassin.AttrPresent_Backstab"
+KM_PRAES_OUTER = "GD_AttributePresentation.Skills_Assassin"
+KM_PRAES_LISTE = "GD_AttributePresentation._AttributeList.DefaultPresentationList"
+
+
+def _km_skill(skill: str) -> Skill | None:
+    return next((s for t, _ in BAEUME for tier in t for s in tier if s.name == skill), None)
+
+
+def _km_praesentation(attrs: dict[str, UObject]) -> None:
+    liste = _find("AttributePresentationListDefinition", KM_PRAES_LISTE)
+    if liste is None:
+        logging.error(f"[ZB] Klassenmod: {KM_PRAES_LISTE} fehlt")
+        return
+    neu = []
+    for skill, attr in attrs.items():
+        pr = _copy("AttributePresentationDefinition", KM_PRAES_VORLAGE, KM_PRAES_OUTER, f"ZB_Praes_{skill}")
+        pr.Attribute = attr
+        sk = _km_skill(skill)
+        pr.Description = f"{sk.titel if sk else skill} Skill"
+        if pr not in liste.Attributes:
+            neu.append(pr)
+    if neu:
+        vorher = len(liste.Attributes)
+        liste.Attributes = list(liste.Attributes) + neu   # Objekt-Array: ganze Liste setzen (v1.74b gemessen)
+        logging.info(f"[ZB] Klassenmod: Praesentationsliste {vorher} -> {len(liste.Attributes)}")
+
+
+_KM_SLOT_FELDER = ("SlotName", "bExternalSlot", "bRunEffectsAsSkill", "AttributeToModify", "ConstraintAttribute",
+                   "ModifierType", "bIncludeInFunStats", "bIncludeAlliesAsTarget", "bEnforceMinimumGrade",
+                   "bEnforceMaximumGrade", "MinimumGrade", "MaximumGrade")
+_KM_WERT_FELDER = ("BaseValueConstant", "BaseValueAttribute", "InitializationDefinition", "BaseValueScaleConstant")
+
+
+def _km_slot_kopieren(ziel: Any, quelle: Any) -> None:
+    """Ein AttributeSlotEffects-Element Feld fuer Feld uebertragen (Struct-Arrays nur elementweise, CLAUDE.md)."""
+    for f in _KM_SLOT_FELDER:
+        setattr(ziel, f, getattr(quelle, f))
+    for teil in ("BaseModifierValue", "PerGradeUpgrade"):
+        for f in _KM_WERT_FELDER:
+            setattr(getattr(ziel, teil), f, getattr(getattr(quelle, teil), f))
+
+
+def _km_definition(km: Klassenmod, class_id: UObject, attrs: dict[str, UObject]) -> UObject:
+    vorlage = f"{KM_DEF_OUTER}.ClassMod_Assassin_{km.vorlage}"
+    cm = _copy("ClassModDefinition", vorlage, KM_DEF_OUTER, km.obj)
+    ninja = _find("ClassModDefinition", KM_SKILL_VORLAGE)
+    cm.RequiredPlayerClass = class_id
+    if km.alle_waffen:
+        cm.AttributeSlotEffects[0].ConstraintAttribute = None
+    for i, skill in enumerate(km.skills, start=1):
+        _km_slot_kopieren(cm.AttributeSlotEffects[i], ninja.AttributeSlotEffects[i])
+        cm.AttributeSlotEffects[i].AttributeToModify = attrs[skill]
+    # Namen: Prefix 00-03 als eigene Kopien der Ninja-Prefixe (Expressions auf SlotRank_Skill1-3 bleiben)
+    prefixe = []
+    for vorlage_name, text in zip(KM_PREFIX_VORLAGEN, (km.name, *km.namen)):
+        p = _copy("ItemNamePartDefinition", f"{KM_PREFIX_OUTER}.{vorlage_name}", KM_PREFIX_OUTER,
+                  f"Prefix_Chronomaster_{km.name}_{vorlage_name[13:15]}")
+        p.PartName = text
+        prefixe.append(p)
+    cm.PrefixList = prefixe
+    s0 = cm.AttributeSlotEffects[0]
+    logging.info(f"[ZB] Klassenmod {km.name}: Vorlage {km.vorlage}, Grundwert {s0.AttributeToModify.Name if s0.AttributeToModify else None}"
+                 f" ({'alle Waffen' if s0.ConstraintAttribute is None else s0.ConstraintAttribute.Name}),"
+                 f" Slots {[e.AttributeToModify.Name if e.AttributeToModify else None for e in list(cm.AttributeSlotEffects)[1:4]]},"
+                 f" Namen {[p.PartName for p in cm.PrefixList]}")
+    return cm
+
+
+_km_bereit = False
+
+
+def klassenmods_beim_start(quelle: str) -> None:
+    """v1.74b: Die Definitionen muessen stehen, BEVOR ein Spielstand laedt."""
+    global _km_bereit
+    if _km_bereit:
+        return
+    try:
+        _km_bereit = klassenmod_bauen() is not None
+        logging.info(f"[ZB] Klassenmod-Definitionen ({quelle}): {'stehen' if _km_bereit else 'FEHLEN'}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod-Definitionen ({quelle}): {ex}")
+
+
+def _km_balance_pfad(stufe: int) -> str:
+    if stufe >= 5:
+        return KM_LEG_BAL   # v1.77
+    return f"{KM_BAL_OUTER}.BalDef_ClassMod_Chronomaster_{KM_STUFEN[stufe - 1]}"
+
+
+def klassenmod_bauen() -> list[UObject] | None:
+    """Alle 7 Definitionen und die 4 Balances (je Seltenheit). Gibt die Definitionen zurueck."""
+    for paket in ("GD_ClassMods", "GD_ItemGrades"):
+        if _find("Package", paket) is None:
+            try:
+                unrealsdk.load_package(paket)
+            except Exception as ex:  # noqa: BLE001
+                logging.info(f"[ZB] Klassenmod: load_package {paket}: {ex}")
+    class_id = _find("PlayerClassIdentifierDefinition", KM_CLASS_ID)
+    if class_id is None:
+        logging.error(f"[ZB] Klassenmod: {KM_CLASS_ID} fehlt")
+        return None
+    attrs = {s: _km_attr(s) for s in KM_SKILLS}
+    if any(a is None for a in attrs.values()):
+        return None
+    try:
+        _km_praesentation(attrs)
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod: Praesentation: {ex}")
+    defs = [_km_definition(km, class_id, attrs) for km in KLASSENMODS]
+    basis = _copy("ClassModBalanceDefinition", KM_BAL_BASIS_VORLAGE, KM_BAL_OUTER, "BalDef_ClassMod_Chronomaster")
+    basis.ClassModDefinitions = defs
+    for i, stufe in enumerate(KM_STUFEN, start=1):
+        bal = _copy("ClassModBalanceDefinition", f"{KM_BAL_OUTER}.BalDef_ClassMod_Assassin_{stufe}", KM_BAL_OUTER,
+                    _km_balance_pfad(i).rsplit(".", 1)[-1])
+        bal.BaseDefinition = basis
+        bal.ClassModDefinitions = defs
+    logging.info(f"[ZB] Klassenmod: {len(defs)} Definitionen, {len(attrs)} Grad-Attribute, Balances {', '.join(KM_STUFEN)}")
+    try:
+        klassenmod_legendaer_bauen(class_id, attrs)   # v1.77
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Legendaer bauen: {ex}")
+    return defs
+
+
+# v1.76: Wie Spieler an die Mods kommen. Dump: Beute (Pool_GunsAndGear_*), Truhen (Pool_WeaponChest/EpicChest_
+# ClassMods), Zeds Health-Shop und Missionen (Lilith, M_Ep5_ThePhoenix: Pool_ClassMod_01_Common) laufen ueber die
+# allgemeinen Pool_ClassMod_0N; die verzweigen nach Klasse in Unterpools. Fuer den Chronomaster waehlt das Spiel
+# den Assassin-Unterpool (Nexus GhostRdrTat: Liliths Belohnung war ein Zer0-Mod). Darum: solange der Spieler ein
+# Chronomaster ist, zeigen Zer0s Unterpools auf unsere Balances. Legendaer/Terramorphous -> lila, bis es eigene
+# gibt. GRENZE: im Koop mit einem echten Zer0 bekaeme auch er unsere Mods.
+KM_POOL_TAUSCH = {
+    "GD_Itempools.ClassModPools.Pool_ClassMod_Assassin_01_Common": 1,
+    "GD_Itempools.ClassModPools.Pool_ClassMod_Assassin_02_Uncommon": 2,
+    "GD_Itempools.ClassModPools.Pool_ClassMod_Assassin_03_Rare": 3,
+    "GD_Itempools.ClassModPools.Pool_ClassMod_Assassin_04_VeryRare": 4,
+    "GD_Itempools.ClassModPools.Pool_ClassMod_Assassin_05_Legendary": 5,             # v1.77 legendaer
+    "GD_Itempools.ClassModPools.Pool_ClassMod_Assassin_06_SlayerOfTerramorphous": 5,
+}
+_km_pools_an = False
+_km_pool_original: dict[str, str] = {}   # Pool-Pfad -> Pfad der Zer0-Balance
+_km_pool_uhr = 0.0
+
+
+def klassenmod_pools(an: bool, grund: str) -> None:
+    global _km_pools_an
+    getauscht = 0
+    for pfad, stufe in KM_POOL_TAUSCH.items():
+        pool = _find("ItemPoolDefinition", pfad)
+        if pool is None or len(pool.BalancedItems) == 0:
+            continue
+        eintrag = pool.BalancedItems[0]
+        try:
+            if an:
+                unser = _find("ClassModBalanceDefinition", _km_balance_pfad(stufe))
+                if unser is None:
+                    continue
+                if pfad not in _km_pool_original and eintrag.InvBalanceDefinition is not None:
+                    _km_pool_original[pfad] = eintrag.InvBalanceDefinition._path_name()
+                eintrag.InvBalanceDefinition = unser
+            else:
+                alt = _find("ClassModBalanceDefinition", _km_pool_original.get(pfad, ""))
+                if alt is None:
+                    continue
+                eintrag.InvBalanceDefinition = alt
+            getauscht += 1
+        except Exception as ex:  # noqa: BLE001
+            logging.error(f"[ZB] Klassenmod-Pools {pfad}: {ex}")
+    _km_pools_an = an
+    logging.info(f"[ZB] Klassenmod-Pools ({grund}): {getauscht} von {len(KM_POOL_TAUSCH)} Zer0-Unterpools"
+                 f" {'auf Chronomaster-Mods' if an else 'zurueck auf Zer0'}")
+
+
+def _km_pool_tick(dt: float) -> None:
+    """Einmal je Sekunde: passt der Pool-Tausch zum Charakter? (Kartenwechsel, Charakterwechsel)"""
+    global _km_pool_uhr
+    _km_pool_uhr -= dt
+    if _km_pool_uhr > 0:
+        return
+    _km_pool_uhr = 1.0
+    pc = local_pc()
+    soll = pc is not None and pc.Pawn is not None and ist_chronomaster(pc) and _km_bereit
+    if soll != _km_pools_an:
+        klassenmod_pools(soll, "Chronomaster im Spiel" if soll else "kein Chronomaster")
+    elif soll:
+        # Sitzt der Tausch noch? Laedt das Spiel die Pools neu (Kartenwechsel), waere er sonst still weg.
+        pfad = next(iter(KM_POOL_TAUSCH))
+        pool = _find("ItemPoolDefinition", pfad)
+        if pool is not None and len(pool.BalancedItems) > 0:
+            b = pool.BalancedItems[0].InvBalanceDefinition
+            if b is None or "Chronomaster" not in b.Name:
+                klassenmod_pools(True, "Tausch war weg (Pools neu geladen?)")
+
+
+def klassenmod_status() -> None:
+    raenge = ", ".join(f"{s} {skill_rang(s)}" for s in KM_SKILLS)
+    logging.info(f"[ZB] Klassenmod: Raenge {raenge}")
+
+
+def klassenmod_geben(name: str = "", stufe: int = 4) -> None:
+    """zb klassenmod [NAME] [STUFE 1-4]: einen bestimmten (oder zufaelligen) Mod in den Rucksack."""
+    pc = local_pc()
+    if pc is None or pc.Pawn is None:
+        logging.error("[ZB] Klassenmod: kein Spieler")
+        return
+    klassenmods_beim_start("Befehl")
+    stufe = min(max(stufe, 1), 5)   # 5 = legendaer (v1.77)
+    bal = _find("ClassModBalanceDefinition", _km_balance_pfad(stufe))
+    if bal is None:
+        logging.error(f"[ZB] Klassenmod: Balance Stufe {stufe} fehlt")
+        return
+    alle = list(bal.ClassModDefinitions)
+    km = next((k for k in KLASSENMODS if k.name.lower() == name.lower()), None) if name else random.choice(KLASSENMODS)
+    if km is None:
+        logging.error(f"[ZB] Klassenmod: unbekannt '{name}' - {', '.join(k.name for k in KLASSENMODS)}")
+        return
+    soll_name = _km_leg_obj(km) if stufe >= 5 else km.obj
+    cm = next((c for c in alle if c.Name == soll_name), None)
+    basis = bal.BaseDefinition
+    alle_basis = list(basis.ClassModDefinitions) if basis is not None else []
+    try:
+        # Die Balance waehlt zufaellig unter ihren Definitionen - fuer den Test kurz nur diese eine. v1.75b: auch
+        # in der BASIS, v1.75 hat nur die Stufen-Balance eingeschraenkt und bekam zufaellige Mods (Log 14:15-14:18).
+        if cm is not None:
+            bal.ClassModDefinitions = [cm]
+            if basis is not None:
+                basis.ClassModDefinitions = [cm]
+        stufe_spieler = int(pc.PlayerReplicationInfo.ExpLevel)
+        pool = unrealsdk.find_class("ItemPool").ClassDefaultObject
+        res = pool.SpawnBalancedInventoryFromInventoryBalanceDefinition(bal, 1, stufe_spieler, 0, pc.Pawn, [])
+        teile = res if isinstance(res, tuple) else (res,)
+        liste = next((t for t in teile if not isinstance(t, bool) and hasattr(t, "__len__")), None)
+        if not liste:
+            logging.error(f"[ZB] Klassenmod: nichts erzeugt (Rueckgabe {res!r})")
+            return
+        item = liste[0]
+        pc.GetPawnInventoryManager().AddInventoryToBackpack(item)
+        d = item.DefinitionData
+        logging.info(f"[ZB] Klassenmod: {km.name} Stufe {stufe} im Rucksack ({item.Name}), Spielerstufe {stufe_spieler},"
+                     f" Definition {d.ItemDefinition.Name if d.ItemDefinition else None}, Balance {d.BalanceDefinition.Name if d.BalanceDefinition else None}")
+        if d.ItemDefinition is not None and d.ItemDefinition.Name != soll_name:
+            logging.error(f"[ZB] Klassenmod: FALSCHER Mod - bestellt {soll_name}, bekommen {d.ItemDefinition.Name}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod: spawnen: {ex}")
+    finally:
+        bal.ClassModDefinitions = alle
+        if basis is not None:
+            basis.ClassModDefinitions = alle_basis
+
+
+# --- Legendaere Class Mods (v1.77, Plan "Legendaere Class Mods") -------------------------------------
+# Vorlage: GD_ClassMods.A_Item_Assassin.ClassMod_Assassin_Z_LegendaryHunter (Grundspiel - die Lobelia-
+# Legendaeren brauchen das DLC Commander Lilith). Dump: 9 Slots - 0 PrimaryStatBonus, 1 PrimaryStatBonus02,
+# 2 StatPenalty, 3-7 Skill1/3/4/5/6, 8 Flavor; ein Prefix (Prefix_Z_LegendaryHunter); UIStatList 0-2.
+# Belegung: Slot 0 = Grundwert der normalen Vorlage, 1+2 neutralisiert (nie kuerzen, CLAUDE.md), 3-7 = unsere
+# 5 Skills, 8 neutralisiert; Texte ueber CustomPresentations (v1.77c).
+KM_LEG_VORLAGE = "GD_ClassMods.A_Item_Assassin.ClassMod_Assassin_Z_LegendaryHunter"
+KM_LEG_PREFIX = "GD_ClassMods.Prefix_Assassin.Prefix_Z_LegendaryHunter"
+KM_LEG_BAL_VORLAGE = "GD_ItemGrades.ClassMods.BalDef_ClassMod_Assassin_05_Legendary"
+KM_LEG_BAL = f"{KM_BAL_OUTER}.BalDef_ClassMod_Chronomaster_05_Legendary"
+KM_LEG_BASIS = "BalDef_ClassMod_Chronomaster_Legendaer"
+# v1.77c: Der Hunter traegt seine Texte in CustomPresentations (Dump: _1 = Effekt "Das Verwenden der
+# Taeuschung stellt 10 % Gesundheit wieder her", _2 = rotes Zitat "Ich sterbe niemals") und den Heileffekt in
+# einer eigenen BehaviorProviderDefinition - die Kopie hatte beides geerbt (Test v1.77b), und weil unser Action
+# Skill eine Kopie der Taeuschung ist, haette sie wirklich geheilt. Darum: BPD weg, eigene Texte als Kopien der
+# beiden Hunter-Praesentationen. Slot 8 (Flavor) wird nur noch neutralisiert.
+KM_LEG_PRAES_VORLAGEN = (f"{KM_LEG_VORLAGE}:AttributePresentationDefinition_1",   # Effekt (weiss)
+                         f"{KM_LEG_VORLAGE}:AttributePresentationDefinition_2")   # Zitat (rot)
+KM_LEG_LEERE_UI = "D_Attributes.Weapon.WeaponPerShotAccuracyImpulse"   # aendert kein Mod mehr -> Zeile unsichtbar
+KM_LEG_SKILL_SLOTS = (3, 4, 5, 6, 7)
+KM_LEG_LEER_SLOTS = (1, 2, 8)
+
+# Zusatz-Skills, Effekttext und Zitat je Mod (vom Nutzer abgesegnet 2026-10-11, Zitate Vorschlag)
+KM_LEGENDAER = {
+    "Historian": (("Wiederkehr", "KursHalten"), "Tension stacks up to 20.", '"History repeats itself."'),
+    "Executioner": (("Hinterhalt", "Wiederkehr"), "Kills during Guaranteed Crits extend it by 1 second.", '"Time\'s up."'),
+    "Avenger": (("Bereitschaft", "Zeitkapsel"), "Return to Sender explodes at the attacker.", '"What goes around comes around."'),
+    "Gunslinger": (("Gedaechtnis", "Nachfuellen"), "Double shots become triple shots.", '"Why stop at two?"'),
+    "Reaper": (("Eile", "Nachwirkung"), "Kills while the bomb is out cut the cooldown by 1 second.", '"Every death buys time."'),
+    "Grenadier": (("Eile", "Auffrischung"), "Grenades thrown while the bomb is out always come back.", '"Boom. Again."'),
+    "Warden": (("Bereitschaft", "Auffrischung"), "Holograms explode when they vanish.", '"Leave something behind."'),
+}
+
+
+def _km_leg_obj(km: Klassenmod) -> str:
+    return f"ClassMod_Chronomaster_Legendary{km.name}"
+
+
+def _km_slot_leeren(slot: Any) -> None:
+    slot.AttributeToModify = None
+    slot.ConstraintAttribute = None
+    for teil in ("BaseModifierValue", "PerGradeUpgrade"):
+        w = getattr(slot, teil)
+        w.BaseValueConstant = 0.0
+        w.BaseValueAttribute = None
+        w.InitializationDefinition = None
+
+
+def _km_legendaer(km: Klassenmod, class_id: UObject, attrs: dict[str, UObject]) -> UObject:
+    extra, text, zitat = KM_LEGENDAER[km.name]
+    skills = (*km.skills, *extra)
+    cm = _copy("ClassModDefinition", KM_LEG_VORLAGE, KM_DEF_OUTER, _km_leg_obj(km))
+    normal = _find("ClassModDefinition", f"{KM_DEF_OUTER}.ClassMod_Assassin_{km.vorlage}")
+    cm.RequiredPlayerClass = class_id
+    cm.BehaviorProviderDefinition = None   # Hunter-Heilung bei "Taeuschung" (v1.77c)
+    slots = cm.AttributeSlotEffects
+    _km_slot_kopieren(slots[0], normal.AttributeSlotEffects[0])
+    if km.alle_waffen:
+        slots[0].ConstraintAttribute = None
+    for i in KM_LEG_LEER_SLOTS:
+        _km_slot_leeren(slots[i])
+    for i, skill in zip(KM_LEG_SKILL_SLOTS, skills):
+        slots[i].AttributeToModify = attrs[skill]
+    # Kartenzeilen: 0 = unser Grundwert; 1/2 (Hunter: Krit, Nachladen) auf ein Attribut, das der Mod nicht aendert
+    # - sonst stand der Grundwert doppelt da, wenn er Nachladen/Krit ist (Test v1.77b: "Ladegeschw." zweimal)
+    leer = _find("AttributeDefinition", KM_LEG_LEERE_UI)
+    ui = cm.UIStatList
+    ui[0].Attribute = slots[0].AttributeToModify
+    ui[0].ConstraintAttribute = None
+    for i in range(1, len(ui)):
+        ui[i].Attribute = leer
+        ui[i].ConstraintAttribute = None
+    # eigene Texte
+    praes = []
+    for nr, (vorlage, inhalt) in enumerate(zip(KM_LEG_PRAES_VORLAGEN, (text, zitat))):
+        pr = _copy("AttributePresentationDefinition", vorlage, KM_PRAES_OUTER, f"ZB_Praes_Legendary{km.name}_{nr}")
+        pr.Description = inhalt
+        praes.append(pr)
+    cm.CustomPresentations = praes
+    p = _copy("ItemNamePartDefinition", KM_LEG_PREFIX, KM_PREFIX_OUTER, f"Prefix_Chronomaster_Legendary{km.name}")
+    p.PartName = f"Legendary {km.name}"
+    cm.PrefixList = [p]
+    logging.info(f"[ZB] Legendaer {km.name}: Grundwert {slots[0].AttributeToModify.Name if slots[0].AttributeToModify else None},"
+                 f" Skills {[slots[i].AttributeToModify.Name for i in KM_LEG_SKILL_SLOTS]},"
+                 f" Texte {[x.Description for x in cm.CustomPresentations]}, BPD {cm.BehaviorProviderDefinition}")
+    return cm
+
+
+def klassenmod_legendaer_bauen(class_id: UObject, attrs: dict[str, UObject]) -> list[UObject]:
+    defs = [_km_legendaer(km, class_id, attrs) for km in KLASSENMODS]
+    basis = _copy("ClassModBalanceDefinition", KM_BAL_BASIS_VORLAGE, KM_BAL_OUTER, KM_LEG_BASIS)
+    basis.ClassModDefinitions = defs
+    bal = _copy("ClassModBalanceDefinition", KM_LEG_BAL_VORLAGE, KM_BAL_OUTER, KM_LEG_BAL.rsplit(".", 1)[-1])
+    bal.BaseDefinition = basis
+    bal.ClassModDefinitions = defs
+    # v1.77b: Die Legendaer-Vorlage hat InventoryDefinition = LegendaryHunter fest eingetragen (Dump; die
+    # Stufen 01-04 haben dort None und wuerfeln aus der Liste). Sonst kam immer Zer0s Hunter (Test v1.77).
+    bal.InventoryDefinition = None
+    logging.info(f"[ZB] Legendaer: {len(defs)} Definitionen, Balance {bal.Name}, InventoryDefinition {bal.InventoryDefinition}")
+    return defs
+
+
+# --- Class Mods: Speichern und Laden (v1.74c) ------------------------------------------------------
+# Test v1.74b: Der Mod war nach Speichern und Laden weg, obwohl die Definitionen schon vor dem Laden standen.
+# BL2 speichert Items ueber die Asset-Bibliotheken des Spiels; Laufzeit-Objekte lassen sich dort nicht
+# verschluesseln und kommen beim Laden als None zurueck (so beschreibt es der Pipeline-Mod aus dem BO2-Projekt,
+# F18; Sanity Saver: "items which don't serialize"). Die UniqueId des Items ueberlebt.
+# Weg (Muster der Pipeline-Mods, dort bewiesen): GeneratePlayerSaveGame PRE merkt sich je UniqueId unsere
+# ItemDefinition und BalanceDefinition in einer eigenen Datei; ApplyPlayerSaveGameData PRE schreibt sie in
+# die Spielstand-Daten zurueck, BEVOR das Spiel die Items baut und prueft. Die Datei wird zusammengefuehrt,
+# nie ersetzt: Ein Item, das bei einem Speichern gerade nicht gefunden wird, verliert so seinen Eintrag nicht.
+KM_SPEICHER_FUNC = "WillowGame.WillowPlayerController:GeneratePlayerSaveGame"
+KM_LADEN_FUNC = "WillowGame.WillowPlayerController:ApplyPlayerSaveGameData"
+
+
+def _km_eigene_pfade() -> set[str]:
+    """Pfade unserer Class-Mod-Definitionen und -Balances (v1.75: das ganze Set)."""
+    kandidaten = [("ClassModDefinition", f"{KM_DEF_OUTER}.{km.obj}") for km in KLASSENMODS]
+    kandidaten += [("ClassModBalanceDefinition", _km_balance_pfad(i)) for i in range(1, len(KM_STUFEN) + 1)]
+    kandidaten.append(("ClassModBalanceDefinition", f"{KM_BAL_OUTER}.BalDef_ClassMod_Chronomaster"))
+    kandidaten += [("ClassModDefinition", f"{KM_DEF_OUTER}.{_km_leg_obj(km)}") for km in KLASSENMODS]   # v1.77
+    kandidaten += [("ClassModBalanceDefinition", KM_LEG_BAL), ("ClassModBalanceDefinition", f"{KM_BAL_OUTER}.{KM_LEG_BASIS}")]
+    return {pfad for cls, pfad in kandidaten if _find(cls, pfad) is not None}
+
+
+def _km_datei(spielstand: Any) -> str:
+    ordner = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_chronomaster_saves")
+    os.makedirs(ordner, exist_ok=True)
+    sicher = "".join(c for c in str(spielstand) if c.isalnum() or c in "._-") or "unbekannt"
+    return os.path.join(ordner, f"{sicher}.json")
+
+
+def _km_lesen(pfad: str) -> dict[str, dict[str, str]]:
+    if not os.path.exists(pfad):
+        return {}
+    try:
+        with open(pfad, encoding="utf-8") as f:
+            daten = json.load(f)
+        return daten if isinstance(daten, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _on_km_speichern(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    """PRE GeneratePlayerSaveGame: unsere Class Mods des Spielers je UniqueId vormerken. Feuert auch bei
+    jedem Kartenwechsel."""
+    try:
+        if not ist_chronomaster(obj) or obj.Pawn is None:
+            return
+        eigene = _km_eigene_pfade()
+        if not eigene:
+            return
+        gesehen: dict[str, dict[str, str]] = {}
+        for item in unrealsdk.find_all("WillowClassMod", exact=False):
+            try:
+                if item.Owner != obj.Pawn:
+                    continue
+                d = item.DefinitionData
+                defn = d.ItemDefinition._path_name() if d.ItemDefinition is not None else ""
+                bal = d.BalanceDefinition._path_name() if d.BalanceDefinition is not None else ""
+                if defn not in eigene and bal not in eigene:
+                    continue
+                satz = {"ItemDefinition": defn, "BalanceDefinition": bal}
+                # v1.77d: auch der Namensteil ist eine Laufzeit-Kopie (Prefix_Chronomaster_*) und kam nach dem
+                # Laden leer zurueck - der Mod hiess nur noch "Klassen-Mod" (Test v1.77c)
+                pre = d.PrefixItemNamePartDefinition
+                if pre is not None and "Chronomaster" in pre.Name:
+                    satz["PrefixItemNamePartDefinition"] = pre._path_name()
+                gesehen[str(int(d.UniqueId))] = satz
+            except Exception:  # noqa: BLE001 - halb zerstoerte Actors werfen beim Lesen
+                continue
+        if not gesehen:
+            return
+        pfad = _km_datei(obj.SaveGameName)
+        daten = _km_lesen(pfad)
+        daten.update(gesehen)
+        with open(pfad, "w", encoding="utf-8") as f:
+            json.dump(daten, f, indent=1)
+        logging.info(f"[ZB] Klassenmod speichern: {len(gesehen)} vorgemerkt ({', '.join(gesehen)}),"
+                     f" {len(daten)} in {os.path.basename(pfad)}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod speichern: {ex}")
+
+
+def _on_km_laden(obj: UObject, args: Any, ret: Any, func: Any) -> None:
+    """PRE ApplyPlayerSaveGameData: unsere Definitionen in die Spielstand-Daten zurueckschreiben, bevor das
+    Spiel die Items baut. Nur Eigenschaften der Spielstand-Daten, keine Funktionen an fremden Objekten."""
+    try:
+        name = obj.GetSaveGameNameFromid(args.SaveGame.SaveGameId)
+        pfad = _km_datei(name)
+        daten = _km_lesen(pfad)
+        if not daten:
+            return
+        if not _km_bereit:
+            klassenmods_beim_start("Laden")
+        zurueck, fehlt, leer = [], [], 0
+        for eintrag in args.SaveGame.ItemData:
+            d = eintrag.DefinitionData
+            uid = str(int(d.UniqueId))
+            satz = daten.get(uid)
+            if satz is None:
+                continue
+            if d.ItemDefinition is None:
+                leer += 1
+            for feld, cls in (("ItemDefinition", "ClassModDefinition"), ("BalanceDefinition", "ClassModBalanceDefinition"),
+                              ("PrefixItemNamePartDefinition", "ItemNamePartDefinition")):
+                if feld not in satz:
+                    continue   # aeltere Eintraege ohne Namensteil (vor v1.77d)
+                ziel = _find(cls, satz.get(feld, "")) if satz.get(feld) else None
+                if ziel is None:
+                    fehlt.append(f"{uid}:{feld}")
+                    continue
+                setattr(d, feld, ziel)
+            zurueck.append(uid)
+        logging.info(f"[ZB] Klassenmod laden ({name}): {len(zurueck)} zurueckgeschrieben {zurueck},"
+                     f" davon {leer} mit leerer Definition im Spielstand, fehlend {fehlt}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod laden: {ex}")
+
+
+def klassenmod_rang_diagnose() -> None:
+    """v1.74c: GetSkillGrade liefert den Rang OHNE Class-Mod-Bonus (Test v1.74b: 1 statt 6). Wo steht der
+    wirksame? Kandidaten ins Log: die laufende Skill-Instanz und ihre Felder mit 'rade' im Namen."""
+    pc, sm = local_pc(), skill_manager()
+    for s in KM_SKILLS:
+        d = skill_def(s)
+        if pc is None or d is None:
+            continue
+        teile = [f"GetSkillGrade {skill_rang(s)}"]
+        try:
+            inst = sm.GetActiveSkillForInstigatorByDefinition(pc, d) if sm is not None else None
+            if inst is None:
+                teile.append("keine laufende Instanz")
+            else:
+                # v1.74d: Dump Skill: Grade (wirksam?) und GradeBaseValue (Punkte?)
+                teile.append(f"Instanz Grade {int(inst.Grade)}, GradeBaseValue {int(inst.GradeBaseValue)}, GetGrade() {inst.GetGrade()}")
+        except Exception as ex:  # noqa: BLE001
+            teile.append(f"Instanz: {ex}")
+        logging.info(f"[ZB] Klassenmod-Rang {s}: " + " | ".join(teile))
+    # v1.74e: welche 5-Rang-Skills haben eine laufende Instanz (nur die bekommen den Bonus ueber skill_rang)?
+    mit, ohne = [], []
+    for tabelle, _ in BAEUME:
+        for tier in tabelle:
+            for sk in tier:
+                d = skill_def(sk.name)
+                if sk.rang < 5 or d is None or pc is None or sm is None:
+                    continue
+                try:
+                    inst = sm.GetActiveSkillForInstigatorByDefinition(pc, d)
+                except Exception:  # noqa: BLE001
+                    inst = None
+                (mit if inst is not None else ohne).append(f"{sk.titel} {skill_rang(sk.name)}")
+    logging.info(f"[ZB] Klassenmod-Rang: mit Instanz {mit} | OHNE Instanz {ohne}")
+    # v1.75c: Haste Stacks hat keine Instanz, der Baum zeigt den Bonus aber (Test v1.75b: 5/5 bei 1 Punkt).
+    # Was steht im PlayerSkillTree des Spielers? Alle Felder, und je Array den Eintrag mit unserer Definition.
+    try:
+        baum = pc.PlayerSkillTree if pc is not None else None
+        eile = skill_def("Eile")
+        if baum is None or eile is None:
+            logging.info("[ZB] Klassenmod-Baum: kein PlayerSkillTree")
+            return
+        felder = [n for n in dir(baum) if not n.startswith("_")]
+        logging.info(f"[ZB] Klassenmod-Baum: {baum.Class.Name}, Felder {felder}")
+        for n in felder:
+            try:
+                wert = getattr(baum, n)
+            except Exception:  # noqa: BLE001
+                continue
+            if callable(wert) or isinstance(wert, (str, int, float, bool)) or wert is None:
+                continue
+            try:
+                eintraege = list(wert)
+            except TypeError:
+                continue
+            for i, e in enumerate(eintraege):
+                if getattr(e, "Definition", None) == eile or getattr(e, "SkillDefinition", None) == eile:
+                    logging.info(f"[ZB] Klassenmod-Baum: {n}[{i}] = {e}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod-Baum: {ex}")
+    # v1.75e: Der Baum speichert auch Grade 1 (Test v1.75c); den Bonus liefert der Mod selbst:
+    # WillowClassMod.IsModifyingSkill(SkillDef, out Amount) (zb funcs, Test v1.75d). Rohe Antwort ins Log.
+    try:
+        item = pc.Pawn.InvManager.ItemChain if pc is not None and pc.Pawn is not None else None
+        while item is not None and item.Class.Name != "WillowClassMod":
+            item = item.Inventory
+        if item is None:
+            logging.info("[ZB] Klassenmod-Bonus: kein Class Mod ausgeruestet")
+        else:
+            for s in KM_SKILLS:
+                d = skill_def(s)
+                res = item.IsModifyingSkill(d, 0) if d is not None else None
+                if res and (not isinstance(res, tuple) or res[0]):
+                    logging.info(f"[ZB] Klassenmod-Bonus: {item.DefinitionData.ItemDefinition.Name} -> {s}: {res!r}, skill_rang {skill_rang(s)}")
+    except Exception as ex:  # noqa: BLE001
+        logging.error(f"[ZB] Klassenmod-Bonus: {ex}")
 
 
 # --- Icon-Katalog (v1.36, Testbefehl) --------------------------------------------------------------
@@ -7682,6 +8489,15 @@ def zb(args: Any) -> None:
         case "fasttot":
             # zb fasttot - TESTHILFE, nur Chronomaster: Schild 0, Leben 1 (v0.89)
             fast_tot()
+        case "klassenmod":
+            # zb klassenmod [status] - Spike Class Mods (v1.74): Test-Mod bauen und in den Rucksack
+            # zb klassenmod [NAME] [STUFE 1-4] | status (v1.75: das Set)
+            if args.args and args.args[0] == "status":
+                klassenmod_status()
+                klassenmod_rang_diagnose()
+            else:
+                klassenmod_geben(args.args[0] if args.args else "",
+                                 int(args.args[1]) if len(args.args) > 1 and args.args[1].isdigit() else 4)
         case "krit":
             # zb krit an [SEKUNDEN] | aus - Guaranteed Crits von Hand (v1.72)
             if args.args and args.args[0] == "aus":
@@ -7742,7 +8558,7 @@ def zb(args: Any) -> None:
             )
 
 
-zb.add_argument("action", choices=["status", "legen", "zuenden", "ende", "loeschen", "bombe", "meshes", "rang", "wirkung", "attr", "props", "funcs", "enum", "namen", "gegner", "ziel", "schaden", "ffyl", "fasttot", "fenster", "frieren", "krit", "holo", "koop", "schatten", "effekte", "immun", "ammo", "spur", "kopie", "baum", "pakete", "askill", "skill", "xp", "respec", "cash", "granate", "icons", "skin", "fps"])
+zb.add_argument("action", choices=["status", "legen", "zuenden", "ende", "loeschen", "bombe", "meshes", "rang", "wirkung", "attr", "props", "funcs", "enum", "namen", "gegner", "ziel", "schaden", "ffyl", "fasttot", "fenster", "frieren", "krit", "klassenmod", "holo", "koop", "schatten", "effekte", "immun", "ammo", "spur", "kopie", "baum", "pakete", "askill", "skill", "xp", "respec", "cash", "granate", "icons", "skin", "fps"])
 zb.add_argument("args", nargs="*")
 
 build_mod(

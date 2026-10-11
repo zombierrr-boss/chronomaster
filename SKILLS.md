@@ -1,7 +1,7 @@
 # Chronomaster — Skill Overview
 
 All skills of the **Chronomaster** (class **Timekeeper**) at a glance, so you can see them without installing the mod.
-Numbers are from version **1.73** (test version). The balance isn't tuned yet, so values may change.
+Numbers are from version **1.80** (test version). The balance isn't tuned yet, so values may change.
 
 **"Per rank"** means the value multiplies with your points. Most skills have 5 ranks, capstones and special skills have 1.
 The **anchor** is where your Time Bomb landed, which is also the spot you return to.
@@ -77,6 +77,38 @@ The **anchor** is where your Time Bomb landed, which is also the spot you return
 | 5 | **Infinite** | 1 | For the first 5 seconds after you throw the bomb, your magazine stays full | — |
 | 5 | **Point of No Return** | 1 | If the bomb expires unused: +25% Weapon Damage for 10 seconds, and **no cooldown at all** | — |
 | 6 | **Unspent Time** *(capstone)* | 1 | **Every enemy you kill explodes**, releasing the time it had left: 1.5x your weapon damage within 5 m, in your weapon's element. Kills from the burst explode too | — |
+
+---
+
+## Class Mods
+
+Each class mod raises **three skills that work together**, plus a stat bonus. Like the originals, a class mod only adds to skills you have put at least one point into. Its name depends on which of the three skills gets the biggest boost. You find them in loot, chests, at Zed's vending machines and as mission rewards (white to purple).
+
+| Class mod | Skills | How they work together | Stat bonus |
+|---|---|---|---|
+| **Historian** | Paradox, Tension, Long-Term Memory | A longer window means more Tension stacks, more damage, and more for Paradox to repeat | Weapon Damage |
+| **Executioner** | Guaranteed Crits, Memory, Aftermath | Detonate, then burst: guaranteed crits, more crit damage and weapon damage at once | Critical Hit Damage |
+| **Avenger** | Return to Sender, Borrowed Health, Refresh | Take the hits, strike back on detonation and heal up right away | Max Health |
+| **Gunslinger** | Echo Bullet, Dimensional Loop, Haste Stacks | Two sources of double shots; Haste Stacks makes you fire and reload faster to reach them | Reload Speed |
+| **Reaper** | Stay the Course, Recurrence, Refill | Kill chains while the bomb is out: longer window, full magazine, bonus damage afterwards | Fire Rate |
+| **Grenadier** | Grenade Recall, Full Refund, Standby | Throw grenades freely: they come back or get refunded, and the bomb is ready sooner | Cooldown Rate |
+| **Warden** | Time Capsule, Afterimage, Ambush | Two holograms draw enemy fire, so Ambush almost always applies | Max Health |
+
+### Legendary class mods
+
+Five skills each (the three above plus two more) and a unique effect.
+
+| Legendary | Extra skills | Unique effect |
+|---|---|---|
+| **Legendary Historian** | Recurrence, Stay the Course | Tension stacks up to 20 |
+| **Legendary Executioner** | Ambush, Recurrence | Kills during Guaranteed Crits extend it by 1 second |
+| **Legendary Avenger** | Standby, Time Capsule | Return to Sender explodes at the attacker, hitting enemies nearby |
+| **Legendary Gunslinger** | Memory, Refill | Double shots become triple shots |
+| **Legendary Reaper** | Haste Stacks, Aftermath | Kills while the bomb is out cut the cooldown by 1 second |
+| **Legendary Grenadier** | Haste Stacks, Refresh | Grenades thrown while the bomb is out always come back |
+| **Legendary Warden** | Standby, Refresh | Holograms explode when they vanish |
+
+Keep Chronomaster class mods on you (equipped or in the backpack), not in the bank or Claptrap's stash.
 
 ---
 

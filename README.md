@@ -4,7 +4,7 @@
 
 A new playable character with his own tile in character select, his own save, a new Action Skill and three skill trees (36 skills). The other six Vault Hunters are not changed.
 
-> **Test version.** All 36 skills work, but the balance is not tuned yet. Feedback welcome!
+> **Test version.** All 36 skills and his own class mods work, but the balance is not tuned yet. Feedback welcome!
 
 ## The Time Bomb
 
@@ -20,7 +20,11 @@ A new playable character with his own tile in character select, his own save, a 
 - **Rewind** makes the return stronger: healing, Borrowed Health, Guaranteed Crits, explosions. Capstone *Shadow Anchor* lets you jump back even without a bomb.
 - **Overclock** is about more shots, more ammo and more grenades: Echo Bullet, Dimensional Loop, Time Loop, Infinite. Capstone *Unspent Time* makes every kill explode in your weapon's element.
 
-**All 36 skills with their numbers: [SKILLS.md](SKILLS.md)**, readable without installing anything.
+## Class mods
+
+Seven class mods of his own, each boosting **three skills that work together** (for example *Gunslinger*: Echo Bullet, Dimensional Loop and Haste Stacks). They drop from enemies and chests, are sold at Zed's vending machines and come as mission rewards, just like other class mods. **Legendary** versions boost five skills and add a unique effect, such as triple shots or exploding holograms.
+
+**All 36 skills, all class mods and their numbers: [SKILLS.md](SKILLS.md)**, readable without installing anything.
 
 ## Requirements
 
@@ -44,13 +48,17 @@ A new playable character with his own tile in character select, his own save, a 
 
 To uninstall, disable the mod and restart, then delete the four `Chronomaster*.upk` files from `CookedPCConsole`. Don't load a Chronomaster save while the mod is disabled.
 
+**Class mods are saved with the help of a small file** in `…\Borderlands 2\sdk_mods\_chronomaster_saves\`. Don't delete that folder, or your Chronomaster class mods are lost the next time you load.
+
 ## Known limitations
 
 - The model is a placeholder. The blue parts (hourglass, buttons) are on purpose, not a missing texture.
 - In co-op, other players only see the model if they installed the model files too.
 - Co-op, a full playthrough from level 1 and other character mods are untested.
 - There is no option to create the Chronomaster at level 30 yet.
-- No class mods yet. They are planned.
+- **Don't put Chronomaster class mods in the bank or Claptrap's stash.** They are only kept while you carry them (equipped or in your backpack).
+- Class mods from DLC sources (e.g. Tiny Tina) are still Zer0's. In co-op with a real Zer0, he may find Chronomaster class mods instead of his own.
+- The holograms (Time Capsule, Afterimage) still look like Zer0.
 - Grenade skills scale with your grenade's card damage. Grenades without a damage number make them weak.
 
 ## Feedback
