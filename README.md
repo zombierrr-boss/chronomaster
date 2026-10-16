@@ -14,6 +14,8 @@ A new playable character with his own tile in character select, his own save, a 
 2. **Fight** for up to 20 seconds.
 3. **Press again** to return to the bomb with the saved health, shield and magazine. Kills, damage and loot stay. Cooldown: 35 s (half if the bomb expires unused).
 
+**Option:** *Keep view on detonate* (Mods menu → Chronomaster). Off: you face the direction you had when you threw the bomb. On: you keep looking where you are looking now. Handy on controller.
+
 ## Skill trees
 
 - **Hindsight** rewards what happens while the bomb is out: Haste Stacks, Paradox, Return to Sender. Capstone *Time Freeze* freezes every enemy where the bomb lands.

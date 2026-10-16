@@ -64,12 +64,21 @@ from dataclasses import dataclass
 from typing import Any
 
 import unrealsdk
-from mods_base import ENGINE, Game, build_mod, command
+from mods_base import ENGINE, BoolOption, Game, build_mod, command
 from unrealsdk import logging
 from unrealsdk.unreal import UObject, WeakPointer
 
-__version__ = "1.80"
+__version__ = "1.81"
 __author__ = "zombierrr"
+
+# v1.81 (feedback.md I13, Wunsch baldwinjr3): Beim Zuenden die aktuelle Blickrichtung behalten statt der
+# beim Wurf gespeicherten. Mods-Menue -> Chronomaster. Standard aus = bisheriges Verhalten.
+OPT_BLICK_BEHALTEN = BoolOption(
+    "keep_view_on_detonate", False,
+    display_name="Keep view on detonate",
+    description="On: when you detonate, you keep looking where you are looking now. "
+                "Off: you face the direction you had when you threw the bomb.",
+)
 
 # Der Charaktername ist ein Platzhalter (plan.md, Anhang A). Seit D4 ist DIESE Konstante die einzige
 # Stelle, an der er steht - hotfixes.txt ist stillgelegt. Nirgends sonst fest verdrahten.
@@ -246,11 +255,19 @@ def zuenden() -> None:
 
     # Blickrichtung: ClientSetRotation MIT bResetCamera=True setzt Controller und Pawn (Test 2026-09-19).
     # Ohne das Flag oder per direktem Schreiben von pc.Rotation dreht sich nur der Controller.
-    rot = unrealsdk.make_struct("Rotator", Pitch=a.pitch, Yaw=a.yaw, Roll=a.roll)
+    # v1.81 (feedback.md I13): Mit der Option "Keep view on detonate" bleibt die aktuelle Blickrichtung.
+    # Gesetzt wird dann die Richtung des Controllers jetzt, damit Pawn und Kamera sicher zusammenpassen.
+    if OPT_BLICK_BEHALTEN.value:
+        jetzt = pc.Rotation
+        rot = unrealsdk.make_struct("Rotator", Pitch=jetzt.Pitch, Yaw=jetzt.Yaw, Roll=0)
+    else:
+        rot = unrealsdk.make_struct("Rotator", Pitch=a.pitch, Yaw=a.yaw, Roll=a.roll)
+    ziel_yaw = rot.Yaw
 
     def set_rotation() -> str:
         pc.ClientSetRotation(rot, True)
-        return f"pc.Yaw={pc.Rotation.Yaw} pawn.Yaw={pawn.Rotation.Yaw} (Ziel {a.yaw})"
+        blick = "behalten" if OPT_BLICK_BEHALTEN.value else "Anker"
+        return f"pc.Yaw={pc.Rotation.Yaw} pawn.Yaw={pawn.Rotation.Yaw} (Ziel {ziel_yaw}, Blick: {blick})"
 
     try_call("ClientSetRotation", set_rotation)
 
@@ -2132,8 +2149,8 @@ BAUM_AUSFLUG = [
     [_S("Dimensionsschleife", "Dimensional Loop", "After every reload, your first shots fire twice. The counter next to your XP bar shows the double shots left.", 5, "HS",
         (Effekt(A_SCHADEN, 0.0, ""),)),
      _S("GranatenRueckruf", "Grenade Recall", "Each grenade you throw has a chance to come back to you.", 5, "S")],
-    [_S("Ausbruch", "Breakout", "Throwing the bomb gives you +50% [skill]Movement Speed[-skill] for 3 seconds.", 1, "HS",
-        (Effekt(A_TEMPO, 0.50, "Movement Speed: $NUMBER$"),), dauer=3.0),
+    [_S("Ausbruch", "Breakout", "Throwing the bomb gives you +50% [skill]Movement Speed[-skill] for 10 seconds.", 1, "HS",
+        (Effekt(A_TEMPO, 0.50, "Movement Speed: $NUMBER$"),), dauer=10.0),  # v1.81c: 3 -> 10 s (Nutzer, B10)
      _S("Hinterhalt", "Ambush", "Increases damage against enemies that are not targeting you.", 5, "H",
         (Effekt(A_HINTERHALT, 0.04, "Damage vs. Unaware Enemies: $NUMBER$"),)),
      # v1.63b: HS nur fuer die HUD-Zahl (Schusszaehler); der Effekt ist 0 und wirkt nicht.
@@ -2749,7 +2766,7 @@ def fenster_anpassen() -> None:
 
 
 def mechanik_gelegt() -> None:
-    wirkung_an("Ausbruch")             # 3 s, laeuft von selbst ab
+    wirkung_an("Ausbruch")             # 10 s (v1.81c, gemessen), laeuft von selbst ab
     wirkung_an("Langzeitgedaechtnis")  # Kritschaden, bis zum Zuenden/Verpuffen
     ticker_start()
     kills_start()
@@ -8563,6 +8580,7 @@ zb.add_argument("args", nargs="*")
 
 build_mod(
     name=CHARACTER_NAME,
+    options=[OPT_BLICK_BEHALTEN],
     description="A new 7th Vault Hunter, the Timekeeper, with the Action Skill Time Bomb: throw it, fight, return - to where it landed, with the health, shield and ammo you had. Three new skill trees.",
     supported_games=Game.BL2,
     on_enable=on_enable,

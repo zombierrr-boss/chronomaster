@@ -69,7 +69,7 @@ The **anchor** is where your Time Bomb landed, which is also the spot you return
 | 1 | **Refill** | 5 | Each kill refills 5% of your magazine per rank, without using reserve ammo | 25% of the magazine per kill |
 | 2 | **Dimensional Loop** | 5 | After every reload, your first shots fire twice: 1 shot per rank. A counter next to your XP bar shows the double shots left | 5 double shots |
 | 2 | **Grenade Recall** | 5 | Each grenade you throw has a 6% chance per rank to come back to you | 30% |
-| 3 | **Breakout** | 1 | Throwing the bomb gives you +50% Movement Speed for 3 seconds | — |
+| 3 | **Breakout** | 1 | Throwing the bomb gives you +50% Movement Speed for 10 seconds | — |
 | 3 | **Ambush** | 5 | +4% damage per rank against enemies that aren't targeting you | +20% |
 | 3 | **Echo Bullet** | 5 | Every few shots fire twice: every 10th shot at rank 1, down to every 5th shot at rank 5. A counter next to your XP bar shows the shots until the next echo | every 5th shot |
 | 4 | **Stay the Course** | 5 | Each kill while the bomb is out extends the window by 1 second per rank | +5 s per kill |

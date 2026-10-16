@@ -190,7 +190,7 @@ Layout je Baum `2-2-3-2-2-1` = 12 Skills, 6 Tiers, `PointsToUnlockNextTier=5` (T
 | 1 | `Abstand` | 5 | Mehr Waffenschaden je 10 m Entfernung zum Anker (max 5 Stufen) | +2 % je Stufe | +10 % × 5 = +50 % | H+S | Stack-Skill (`WeaponDamage`), SDK misst die Entfernung und setzt Stacks | CriticalAscention_Stack |
 | 2 | `Vorstoss` | 5 | Kill Skill: Bewegungstempo und Nachladetempo | +4 % / −4 % | +20 / −20 % | H | `FootSpeed`, `WeaponReloadSpeed`, `SKILL_TYPE_Kill` | Killer |
 | 2 | `Sicherer Abstand` | 5 | Weiter als 15 m vom Anker: weniger Schaden | −2 % | −10 % | H+S | wie *Stabilisator*, Auslöser ist die Entfernung | — |
-| 3 | `Ausbruch` | 1 | Legen gibt 3 s lang +50 % Bewegungstempo | — | — | H+S | `FootSpeed`, eigener Skill `DURATION_Timed 3.0` | **Skill_Speed** (0.25 fest, Muster passt exakt) |
+| 3 | `Ausbruch` | 1 | Legen gibt 10 s lang +50 % Bewegungstempo (bis v1.81b 3 s) | — | — | H+S | `FootSpeed`, eigener Skill `DURATION_Timed 10.0` | **Skill_Speed** (0.25 fest, Muster passt exakt) |
 | 3 | `Hinterhalt` | 5 | Mehr Kritschaden gegen Gegner, die nicht auf dich zielen | +4 % | +20 % | H | `PlayerAttackUnsuspectingTargetModifier` | **Ambush** (identisch) |
 | 3 | `Weitschuss` | 5 | Genauigkeit und Projektilgeschwindigkeit | −4 % Streuung, +15 % Tempo | −20 / +75 % | H | `WeaponSpread`, `WeaponProjectileSpeedMultiplier` | Precisi0n, Vel0city |
 | 4 | `Kurs halten` | 5 | Kills mit liegender Bombe verlängern das Fenster | +1 s | +5 s | S | SDK: Kill-Ereignis im Zustand *gelegt* | — |
